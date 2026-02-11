@@ -45,7 +45,8 @@ public class EntiteMapper {
                 sousEntiteIds,
                 responsableId,
                 typeActiviteIds,
-                entite.getType()
+                entite.getType() 
+                
         );
     }
 
