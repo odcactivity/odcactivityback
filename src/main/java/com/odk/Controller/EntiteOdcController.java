@@ -234,6 +234,13 @@ public class EntiteOdcController {
         return entiteOdcService.getCountOfActivitiesByEntiteId(id);
     }
 
+    @GetMapping("/directions")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    public ResponseEntity<List<EntiteDTO>> getDirections() {
+        List<EntiteDTO> directions = entiteOdcService.findDirections();
+        return ResponseEntity.ok(directions);
+    }
+
     @GetMapping("/nombre") // Pas de paramètres
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
     public ResponseEntity<Long> getNombreEntite() {

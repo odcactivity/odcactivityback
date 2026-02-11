@@ -76,7 +76,7 @@ public class JwtService {
 
     private Map<String, String> generateJwt(Utilisateur utilisateur) {
         final long currentTime = System.currentTimeMillis();
-        final long expirationTime = currentTime + 30 * 60 * 1000;
+        final long expirationTime = currentTime + 8 * 60 * 60 * 1000; // 8 heures au lieu de 30 minutes
 
         final Map<String, Object> claims = Map.of(
                 "id", utilisateur.getId(),

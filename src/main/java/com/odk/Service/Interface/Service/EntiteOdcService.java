@@ -1,7 +1,9 @@
 package com.odk.Service.Interface.Service;
 
 import com.odk.Entity.Entite;
+import com.odk.Entity.TypeActivite;
 import com.odk.Entity.Utilisateur;
+import com.odk.Enum.TypeEntite;
 import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.UtilisateurRepository;
 import com.odk.Service.Interface.CrudService;
@@ -30,19 +32,63 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
         return entiteOdcRepository.save(entiteOdc);
     }
     public EntiteDTO ajouter(EntiteDTO dto, MultipartFile fichier) throws IOException {
+        // Validation de la logique hiérarchique
+        validerHierarchieEntite(dto);
+        
         Entite entite = EntiteMapper.toEntity(dto);
 
-//        if (fichier != null && !fichier.isEmpty()) { 
-//            
-//                String imagePath = fileStorage.saveImage(fichier);
-//                System.out.println("lien logo==="+imagePath);
-//                dto.setLogo(imagePath);
-//            
-//            
-//        }
+        // Gestion du responsable
+        if (dto.getResponsable() != null) {
+            utilisateurRepository.findById(dto.getResponsable())
+                    .ifPresent(entite::setResponsable);
+        }
+
+        // Gestion du parent pour les services
+        if (dto.getParentId() != null && dto.getType() == TypeEntite.SERVICE) {
+            entiteOdcRepository.findById(dto.getParentId())
+                    .filter(parent -> parent.getType() == TypeEntite.DIRECTION)
+                    .ifPresentOrElse(
+                            entite::setParent,
+                            () -> {
+                                throw new IllegalArgumentException("Le parent doit être une direction de type DIRECTION");
+                            }
+                    );
+        }
 
         Entite saved = entiteOdcRepository.save(entite);
         return EntiteMapper.toDto(saved);
+    }
+
+    /**
+     * Valide la logique hiérarchique des entités
+     * - DIRECTION: parentId doit être null
+     * - SERVICE: parentId doit être non null et doit pointer vers une DIRECTION
+     */
+    private void validerHierarchieEntite(EntiteDTO dto) {
+        if (dto.getType() == null) {
+            throw new IllegalArgumentException("Le type d'entité est obligatoire (DIRECTION ou SERVICE)");
+        }
+
+        if (dto.getType() == TypeEntite.DIRECTION && dto.getParentId() != null) {
+            throw new IllegalArgumentException("Une direction ne peut pas avoir de parent (parentId doit être null)");
+        }
+
+        if (dto.getType() == TypeEntite.SERVICE) {
+            if (dto.getParentId() == null) {
+                throw new IllegalArgumentException("Un service doit avoir un parent (parentId obligatoire)");
+            }
+            
+            // Vérifier que le parent existe et est bien une direction
+            Optional<Entite> parentOpt = entiteOdcRepository.findById(dto.getParentId());
+            if (parentOpt.isEmpty()) {
+                throw new IllegalArgumentException("L'entité parent avec l'ID " + dto.getParentId() + " n'existe pas");
+            }
+            
+            Entite parent = parentOpt.get();
+            if (parent.getType() != TypeEntite.DIRECTION) {
+                throw new IllegalArgumentException("Un service doit avoir comme parent une direction, pas un autre service");
+            }
+        }
     }
 
     @Override
@@ -114,6 +160,16 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
 
     public List<Utilisateur> findUtilisateursByRole(String roleName) {
         return utilisateurRepository.findByRoleNom(roleName);
+    }
+
+    /**
+     * Récupère toutes les directions (entités de type DIRECTION)
+     */
+    public List<EntiteDTO> findDirections() {
+        return entiteOdcRepository.findByType(TypeEntite.DIRECTION)
+                .stream()
+                .map(EntiteMapper::toDto)
+                .toList();
     }
 
 }

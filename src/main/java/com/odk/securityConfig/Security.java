@@ -33,9 +33,27 @@ public class Security {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .cors().and() // Active CORS avec notre bean CorsConfigurationSource
-                .csrf().disable()
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize -> authorize
+                                .requestMatchers(
+                                        "/swagger-ui/**",
+                                        "/swagger-ui.html",
+                                        "/v3/api-docs/**",
+                                        "/v3/api-docs.yaml",
+                                        "/swagger-resources/**",
+                                        "/webjars/**",
+                                        "/api-docs/**",
+                                        "/swagger-resources/configuration/**",
+                                        "/swagger-resources/configuration/ui/**",
+                                        "/swagger-resources/configuration/security/**",
+                                        "/configuration/**",
+                                        "/configuration/ui/**",
+                                        "/configuration/security/**",
+                                        "/auth/**",
+                                        "/login",
+                                        "/login/**"
+                                ).permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/activitevalidation/**").permitAll()  // Autoriser les routes d'authentification
                         .requestMatchers("/images/**").permitAll()
@@ -44,6 +62,7 @@ public class Security {
                         .requestMatchers("/entites/**").permitAll()
                         .requestMatchers("/reportinghebdo/**").permitAll()
                         .requestMatchers("/reporting/**").permitAll()
+
                         //Endpoints supportActivite ......
                         .requestMatchers("/api/supports").hasAnyRole("PERSONNEL","SUPERADMIN") //Get all...
                         .requestMatchers("/api/supports/**").hasAnyRole("PERSONNEL","SUPERADMIN") //Get by id, POST, PUT, DELETE...
@@ -61,7 +80,7 @@ public class Security {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
@@ -83,10 +102,11 @@ public class Security {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList(
-                "http://localhost:4200",   // ton front Angular
-                "http://localhost:60409",  // le port que tu utilises
+                "http://localhost:4200",   // Angular standard
+                "http://localhost:60409",  // ancien port
+                "http://localhost:8089",   // port du backend
+                "http://localhost:63243",  // nouveau port Angular
                 "https://odc-web-6afd.onrender.com",
-
                 "http://hebergement-odc-activite-front.s3-website-us-east-1.amazonaws.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));

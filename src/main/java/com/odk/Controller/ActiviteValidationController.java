@@ -131,7 +131,7 @@ if(taille!=0){
     List<String> emailsPersonnel = utilisateurs.stream()
                     .filter(utilisateur -> utilisateur.getRole().getNom().equals("PERSONNEL")) // Vérifiez que le rôle est bien défini
                     .map(Utilisateur::getEmail) // Récupérer les emails
-                    .collect(Collectors.toList());
+                    .toList();
             List<String> emailvalidation=new ArrayList<>();
             for (String mail:emailsPersonnel){
                 if(mail.equalsIgnoreCase(utilisateurService.findById(activiteCree.getSuperviseurId()).get().getEmail())){

@@ -6,8 +6,17 @@ import com.odk.Repository.UtilisateurRepository;
 import com.odk.Service.Interface.Service.EmailService;
 import com.odk.Service.Interface.Service.UtilisateurService;
 import com.odk.dto.AuthentificationDTO;
+import com.odk.dto.LoginRequest;
+import com.odk.dto.LoginResponse;
 import com.odk.securityConfig.JwtService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.mail.MessagingException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +35,12 @@ import java.util.Optional;
 
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/auth") // Uniquement /auth pour éviter les conflits
+@CrossOrigin(origins = {"http://localhost:4200", "http://localhost:8089", "http://localhost:60409", "http://localhost:63243"})
 @AllArgsConstructor
 @Slf4j
 @Transactional
+@Tag(name = "Authentification", description = "API pour l'authentification des utilisateurs")
 public class Login {
 
     private AuthenticationManager authenticationManager;
@@ -40,28 +51,44 @@ public class Login {
     private EmailService emailService;
     //private JwtEncoder jwtEncoder;
 
+    @Operation(summary = "Connexion utilisateur", description = "Authentifie un utilisateur et retourne un token JWT")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Connexion réussie", 
+                    content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Requête invalide"),
+            @ApiResponse(responseCode = "401", description = "Identifiants incorrects"),
+            @ApiResponse(responseCode = "500", description = "Erreur interne du serveur")
+    })
     @PostMapping("/login")
-    public ResponseEntity<?> connexion(@RequestBody AuthentificationDTO authentificationDTO) {
-        if (authentificationDTO.getUsername() == null || authentificationDTO.getPassword() == null) {
-            return ResponseEntity.badRequest().body("Nom d'utilisateur et mot de passe requis"); // Réponse 400
+    public ResponseEntity<?> connexion(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
+        log.info("Tentative de connexion depuis l'IP: {}", request.getRemoteAddr());
+        log.info("User-Agent: {}", request.getHeader("User-Agent"));
+        log.info("Origin: {}", request.getHeader("Origin"));
+        log.info("Requête de connexion pour l'utilisateur: {}", loginRequest.getUsername());
+        
+        if (loginRequest.getUsername() == null || loginRequest.getPassword() == null) {
+            log.warn("Tentative de connexion avec username ou password null");
+            return ResponseEntity.badRequest().body("Nom d'utilisateur et mot de passe requis");
         }
 
         try {
             final Authentication authenticate = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(authentificationDTO.getUsername(), authentificationDTO.getPassword())
+                    new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword())
             );
 
             if (authenticate.isAuthenticated()) {
-                Map<String, String> token = this.jwtService.generate(authentificationDTO.getUsername());
-                return ResponseEntity.ok(token);
+                Map<String, String> tokens = this.jwtService.generate(loginRequest.getUsername());
+                String token = tokens.get("bearer"); // Le JwtService retourne "bearer" pas "token"
+                LoginResponse response = new LoginResponse(token, null); // Pas de refreshToken pour l'instant
+                return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Échec de l'authentification");
             }
         } catch (BadCredentialsException e) {
-            e.printStackTrace();
+            log.error("Erreur d'authentification pour l'utilisateur: {}", loginRequest.getUsername());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Nom d'utilisateur ou mot de passe incorrect");
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Erreur lors de la connexion", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur de connexion: " + e.getMessage());
         }
     }
