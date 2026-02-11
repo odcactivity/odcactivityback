@@ -25,6 +25,7 @@ public class Entite {
 
     //Type: DIRECTION ou SERVICE
     @Enumerated(EnumType.STRING)
+    @JsonIgnore
     private TypeEntite type;
 
     @OneToMany(mappedBy = "entite")
