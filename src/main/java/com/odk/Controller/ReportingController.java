@@ -35,4 +35,12 @@ public class ReportingController {
     ) {
         return ResponseEntity.ok(reportingService.getParticipantsFiltered(entiteId, annee));
     }
+
+    /**
+     * Récupérer les participants par genre
+     */
+    @GetMapping("/participants-par-genre")
+    public ResponseEntity<List<ReportingDTO>> getParticipantsParGenre() {
+        return ResponseEntity.ok(reportingService.getAllParticipants());
+    }
 }

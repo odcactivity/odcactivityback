@@ -1,5 +1,7 @@
 package com.odk.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.odk.Entity.Utilisateur;
 import com.odk.Enum.TypeEntite;
 
@@ -12,6 +14,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class EntiteDTO {
     private Long id;
     private String nom;
@@ -20,6 +23,7 @@ public class EntiteDTO {
     private Long parentId;    // ID du parent (null pour les directions)
     private List<Long> sousEntiteIds; // liste des IDs des sous-entités
     private Long responsable;              // uniquement l'ID du responsable
+    @JsonProperty("typeActiviteIds")
     private List<Long> typeActivitesIds;      // uniquement les IDs des types d'activités
     private TypeEntite type; //Recupere DIRECTION||SERVICE
 

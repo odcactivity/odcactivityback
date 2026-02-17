@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -166,10 +167,18 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
      * Récupère toutes les directions (entités de type DIRECTION)
      */
     public List<EntiteDTO> findDirections() {
-        return entiteOdcRepository.findByType(TypeEntite.DIRECTION)
-                .stream()
+        List<Entite> directions = entiteOdcRepository.findByType(TypeEntite.DIRECTION);
+        return directions.stream()
                 .map(EntiteMapper::toDto)
-                .toList();
+                .collect(Collectors.toList());
+    }
+
+    // Récupérer les services d'une direction parente
+    public List<EntiteDTO> findServicesByParent(Long parentId) {
+        List<Entite> services = entiteOdcRepository.findByParentId(parentId);
+        return services.stream()
+                .map(EntiteMapper::toDto)
+                .collect(Collectors.toList());
     }
 
 }

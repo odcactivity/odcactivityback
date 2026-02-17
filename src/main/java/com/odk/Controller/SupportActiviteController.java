@@ -197,5 +197,21 @@ public ResponseEntity<List<SupportActiviteResponseDTO>> rechercherSupports(
             .collect(Collectors.toList());
     return ResponseEntity.ok(dtos);
 } 
+
+    // --------------------------- Endpoint de réponse (redirection) ----------------//
+    // ---------------------------------------------------------------------------------//
+    @PostMapping("/repondre")
+    public ResponseEntity<String> repondre(@RequestParam Long courrierId,
+                                          @RequestParam String email,
+                                          @RequestParam String objet,
+                                          @RequestParam String message,
+                                          @RequestParam(required = false) MultipartFile file,
+                                          @RequestParam(required = false) List<MultipartFile> attachments) {
+        // Rediriger vers le bon endpoint de réponse de courrier
+        return ResponseEntity.status(HttpStatus.MOVED_PERMANENTLY)
+                .header("Location", "/api/courriers/reponse?courrierId=" + courrierId + 
+                        "&email=" + email + "&objet=" + objet + "&message=" + message)
+                .body("Utilisez l'endpoint /api/courriers/reponse pour répondre aux courriers");
+    }
    
 }

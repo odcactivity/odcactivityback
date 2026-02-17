@@ -28,6 +28,10 @@ import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.HistoriqueCourrierRepository;
 import com.odk.Repository.UtilisateurRepository;
 import com.odk.dto.CourrierDTO;
+import com.odk.validation.CourrierValidator;
+import com.odk.validation.FileValidationUtil;
+import com.odk.exception.CourrierValidationException;
+import com.odk.exception.FileValidationException;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -45,15 +49,28 @@ public class CourrierService {
      *  RÉCEPTION / ENREGISTREMENT DU COURRIER
      * ====================================================== */
     public Courrier enregistrerCourrier(CourrierDTO dto) throws IOException {
-
-        Entite direction = entiteRepository.findById(dto.getDirectionId())
-                .orElseThrow(() -> new RuntimeException("Direction non trouvée"));
-
-        if(direction.getType() != TypeEntite.DIRECTION) {
-            throw new RuntimeException("Le courrier doit aller uniquement à une direction");
+        // Validation stricte des données et du fichier
+        CourrierValidator.ValidationResult validation = CourrierValidator.validateCourrierData(dto, dto.getFichier());
+        if (!validation.isValid()) {
+            throw new CourrierValidationException(validation.getErrorMessage());
         }
 
-        String cheminFichier = sauvegarderFichier(dto.getFichier());
+        // Validation spécifique du fichier avec gestion d'erreur
+        String cheminFichier;
+        try {
+            cheminFichier = sauvegarderFichierSecurise(dto.getFichier());
+        } catch (FileValidationException e) {
+            throw new CourrierValidationException("Erreur de validation du fichier : " + e.getMessage(), e);
+        } catch (IOException e) {
+            throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
+        }
+
+        Entite direction = entiteRepository.findById(dto.getDirectionId())
+                .orElseThrow(() -> new CourrierValidationException("Direction non trouvée"));
+
+        if(direction.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("Le courrier doit aller uniquement à une direction");
+        }
 
         Courrier courrier = new Courrier();
         courrier.setNumero(dto.getNumero());
@@ -62,7 +79,7 @@ public class CourrierService {
         courrier.setEntite(direction);
         courrier.setDirectionInitial(direction);
         courrier.setFichier(cheminFichier);
-        courrier.setStatut(StatutCourrier.RECU);
+        courrier.setStatut(StatutCourrier.ENVOYER);
         courrier.setDateReception(new Date());
         courrier.setDateLimite(new Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000));
         courrier.setDateRelance(new Date(System.currentTimeMillis() + 2L * 24 * 60 * 60 * 1000));
@@ -73,7 +90,7 @@ public class CourrierService {
         historique.setCourrier(courrier);
         historique.setEntite(direction);
         historique.setUtilisateur(null);
-        historique.setStatut(StatutCourrier.RECU);
+        historique.setStatut(StatutCourrier.ENVOYER);
         historique.setCommentaire("Réception du courrier à la direction");
         historique.setDateAction(new Date());
         historique.setAncienneEntite(null);
@@ -265,6 +282,53 @@ public class CourrierService {
         return destination.toString();
     }
 
+    /**
+     * Sauvegarde sécurisée du fichier avec validation stricte
+     */
+    private String sauvegarderFichierSecurise(MultipartFile fichier) throws IOException {
+        // Validation préliminaire
+        FileValidationUtil.ValidationResult validation = FileValidationUtil.validateFile(fichier);
+        if (!validation.isValid()) {
+            throw new FileValidationException(validation.getErrorMessage());
+        }
+
+        if (fichier == null || fichier.isEmpty()) {
+            throw new FileValidationException("Aucun fichier fourni");
+        }
+
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+        
+        // Création du répertoire sécurisé
+        Files.createDirectories(uploadPath);
+        
+        // Génération d'un nom de fichier sécurisé
+        String originalFilename = fichier.getOriginalFilename();
+        String extension = "";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+        
+        String nomFichier = System.currentTimeMillis() + "_" + 
+            FileValidationUtil.normalizeFilename(originalFilename.substring(0, originalFilename.lastIndexOf("."))) + extension;
+        
+        Path destination = uploadPath.resolve(nomFichier);
+        
+        // Vérification que le chemin est bien dans le répertoire autorisé
+        if (!destination.startsWith(uploadPath)) {
+            throw new FileValidationException("Tentative de chemin de fichier non autorisée");
+        }
+        
+        // Sauvegarde du fichier
+        fichier.transferTo(destination.toFile());
+        
+        // Vérification finale que le fichier existe et est accessible
+        if (!Files.exists(destination) || !Files.isReadable(destination)) {
+            throw new FileValidationException("Échec de la sauvegarde du fichier");
+        }
+        
+        return destination.toString();
+    }
+
     private String buildEmailBody(String expediteur, String departement, TypeEntite role, String message){
         return "<!DOCTYPE html><html><body>"
                 + "<div style='font-family: Arial, sans-serif; padding: 20px;'>"
@@ -275,5 +339,12 @@ public class CourrierService {
                 + "<p>" + message + "</p>"
                 + "<hr><p style='font-size:0.9em;'>Ceci est un email automatique. Merci de ne pas répondre.</p>"
                 + "</div></body></html>";
+    }
+
+    /**
+     * Récupère les courriers par statut et entité
+     */
+    public List<Courrier> getCourriersByStatutAndEntite(StatutCourrier statut, Long entiteId) {
+        return courrierRepository.findByEntiteIdAndStatut(entiteId, statut);
     }
 }

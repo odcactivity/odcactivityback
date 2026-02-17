@@ -78,8 +78,9 @@ public class Login {
 
             if (authenticate.isAuthenticated()) {
                 Map<String, String> tokens = this.jwtService.generate(loginRequest.getUsername());
-                String token = tokens.get("bearer"); // Le JwtService retourne "bearer" pas "token"
-                LoginResponse response = new LoginResponse(token, null); // Pas de refreshToken pour l'instant
+                String token = tokens.get("token"); // Le JwtService retourne "token"
+                String refreshToken = tokens.get("refreshToken"); // Le JwtService retourne "refreshToken"
+                LoginResponse response = new LoginResponse(token, refreshToken);
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Échec de l'authentification");
@@ -90,6 +91,39 @@ public class Login {
         } catch (Exception e) {
             log.error("Erreur lors de la connexion", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur de connexion: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/refresh-token")
+    @Operation(summary = "Rafraîchir le token JWT", description = "Génère un nouveau token JWT à partir d'un refresh token valide")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Token rafraîchi avec succès"),
+            @ApiResponse(responseCode = "401", description = "Refresh token invalide ou expiré"),
+            @ApiResponse(responseCode = "500", description = "Erreur interne du serveur")
+    })
+    public ResponseEntity<?> refreshToken(@RequestBody Map<String, String> request) {
+        String refreshToken = request.get("refreshToken");
+        
+        if (refreshToken == null || refreshToken.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Refresh token requis");
+        }
+
+        try {
+            // Valider le refresh token
+            String email = jwtService.extractUsername(refreshToken);
+            
+            if (jwtService.isTokenExpired(refreshToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Refresh token expiré");
+            }
+
+            // Générer de nouveaux tokens
+            Map<String, String> newTokens = jwtService.generate(email);
+            
+            return ResponseEntity.ok(newTokens);
+            
+        } catch (Exception e) {
+            log.error("Erreur lors du rafraîchissement du token", e);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Refresh token invalide");
         }
     }
 

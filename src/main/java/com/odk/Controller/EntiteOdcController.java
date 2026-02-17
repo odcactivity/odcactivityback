@@ -1,7 +1,9 @@
 package com.odk.Controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.odk.Entity.Entite;
 import com.odk.Entity.TypeActivite;
 import com.odk.Entity.Utilisateur;
@@ -53,8 +55,24 @@ public class EntiteOdcController {
             @RequestParam("typeActiviteIds") List<Long> typeActiviteIds) {
 
         try {
-            // Convertir le JSON en objet Entite
-            Entite entite = objectMapper.readValue(entiteOdcJson, Entite.class);
+            // Convertir le JSON en objet Entite avec gestion du responsable
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(entiteOdcJson);
+            
+            // Créer une copie du JSON pour modifier le responsable si nécessaire
+            ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
+            
+            // Si le responsable est un objet, extraire l'ID
+            JsonNode responsableNode = rootNode.get("responsable");
+            if (responsableNode != null && responsableNode.isObject()) {
+                JsonNode idNode = responsableNode.get("id");
+                if (idNode != null) {
+                    modifiedNode.put("responsable", idNode.asLong());
+                }
+            }
+            
+            // Convertir le JSON modifié en objet Entite
+            Entite entite = mapper.treeToValue(modifiedNode, Entite.class);
 
             // Sauvegarder le fichier image
 //            String imagePath = fileStorage.saveImage(logo);
@@ -124,7 +142,23 @@ public class EntiteOdcController {
         System.out.println("✅ Requête reçue pour l'entité " + entiteId);
 
         // Désérialisation manuelle du JSON
-        EntiteDTO entiteDTO = new ObjectMapper().readValue(entite, EntiteDTO.class);       
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode rootNode = mapper.readTree(entite);
+        
+        // Créer une copie du JSON pour modifier le responsable si nécessaire
+        ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
+        
+        // Si le responsable est un objet, extraire l'ID
+        JsonNode responsableNode = rootNode.get("responsable");
+        if (responsableNode != null && responsableNode.isObject()) {
+            JsonNode idNode = responsableNode.get("id");
+            if (idNode != null) {
+                modifiedNode.put("responsable", idNode.asLong());
+            }
+        }
+        
+        // Convertir le JSON modifié en EntiteDTO
+        EntiteDTO entiteDTO = mapper.treeToValue(modifiedNode, EntiteDTO.class);       
 
         // Récupération de l'entité existante
         Entite entite1 = entiteOdcService.findById(entiteId)
@@ -167,15 +201,31 @@ public class EntiteOdcController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     //@PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")  
     public ResponseEntity<?> createEntity(
-            @RequestPart("entite") EntiteDTO dto,
+            @RequestPart("entite") String entiteJson,
             @RequestPart(value = "fichier", required = false) MultipartFile fichier) {
 
         try {
                                 System.out.println("fichierrrrrrro==="+fichier);
 
+        // Désérialisation manuelle du JSON avec gestion du responsable
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode rootNode = mapper.readTree(entiteJson);
+        
+        // Créer une copie du JSON pour modifier le responsable si nécessaire
+        ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
+        
+        // Si le responsable est un objet, extraire l'ID
+        JsonNode responsableNode = rootNode.get("responsable");
+        if (responsableNode != null && responsableNode.isObject()) {
+            JsonNode idNode = responsableNode.get("id");
+            if (idNode != null) {
+                modifiedNode.put("responsable", idNode.asLong());
+            }
+        }
+        
+        // Convertir le JSON modifié en EntiteDTO
+        EntiteDTO dto = mapper.treeToValue(modifiedNode, EntiteDTO.class);
 
-        // Récupération de l'entité existante
-       
             // Sauvegarde du fichier si présent
             if (fichier != null && !fichier.isEmpty()) {
                 String imagePath = fileStorage.saveImage(fichier);
@@ -239,6 +289,13 @@ public class EntiteOdcController {
     public ResponseEntity<List<EntiteDTO>> getDirections() {
         List<EntiteDTO> directions = entiteOdcService.findDirections();
         return ResponseEntity.ok(directions);
+    }
+
+    @GetMapping("/parent/{parentId}")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    public ResponseEntity<List<EntiteDTO>> getServicesByParent(@PathVariable Long parentId) {
+        List<EntiteDTO> services = entiteOdcService.findServicesByParent(parentId);
+        return ResponseEntity.ok(services);
     }
 
     @GetMapping("/nombre") // Pas de paramètres

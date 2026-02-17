@@ -7,24 +7,29 @@ import com.odk.Service.Interface.Service.UtilisateurService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import lombok.AllArgsConstructor;
-import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.stereotype.Service;
 
+import javax.crypto.SecretKey;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Base64;
 import java.util.function.Function;
 
-@Component
-@AllArgsConstructor
+@Service
+@RequiredArgsConstructor
 public class JwtService {
     public static final String BEARER = "bearer";
+    public static final String TOKEN = "token"; // Changé pour éviter la confusion
+    public static final String REFRESH_TOKEN = "refreshToken";
     private final String ENCRIPTION_KEY = "608f36e92dc66d97d5933f0e6371493cb4fc05b1aa8f8de64014732472303a7c";
-    private UtilisateurService utilisateurService;
-    private JwtRepository jwtRepository;
+    private final UtilisateurService utilisateurService;
+    private final JwtRepository jwtRepository;
 
     public Jwt tokenByValue(String value) {
         return this.jwtRepository.findByValeurAndDesactiveAndExpire(
@@ -34,18 +39,33 @@ public class JwtService {
         ).orElseThrow(() -> new RuntimeException("Token invalide ou inconnu"));
     }
     public Map<String, String> generate(String username) {
+        System.out.println("=== DEBUG: Génération de token pour " + username + " ===");
         Utilisateur utilisateur = (Utilisateur) this.utilisateurService.loadUserByUsername(username);
+        System.out.println("Utilisateur trouvé: " + utilisateur.getEmail());
+        
         final Map<String, String> jwtMap = this.generateJwt(utilisateur);
+        System.out.println("JWT Map: " + jwtMap);
+        
+        final Map<String, String> refreshTokenMap = this.generateRefreshToken(utilisateur);
+        System.out.println("RefreshToken Map: " + refreshTokenMap);
 
         final Jwt jwt = Jwt
                 .builder()
-                .valeur(jwtMap.get(BEARER))
+                .valeur(jwtMap.get("bearer"))
                 .desactive(false)
                 .expire(false)
                 .utilisateur(utilisateur)
+                .refreshToken(refreshTokenMap.get("refreshToken"))
                 .build();
         this.jwtRepository.save(jwt);
-        return jwtMap;
+        
+        // Retourner les deux tokens avec les bonnes clés
+        Map<String, String> response = new HashMap<>();
+        response.put("token", jwtMap.get("bearer"));
+        response.put("refreshToken", refreshTokenMap.get("refreshToken"));
+        System.out.println("Response finale: " + response);
+        System.out.println("=== FIN DEBUG ===");
+        return response;
     }
 
     public String extractUsername(String token) {
@@ -76,19 +96,18 @@ public class JwtService {
 
     private Map<String, String> generateJwt(Utilisateur utilisateur) {
         final long currentTime = System.currentTimeMillis();
-        final long expirationTime = currentTime + 8 * 60 * 60 * 1000; // 8 heures au lieu de 30 minutes
+        final long expirationTime = currentTime + 7 * 24 * 60 * 60 * 1000; // 7 jours
 
-        final Map<String, Object> claims = Map.of(
-                "id", utilisateur.getId(),
-                "nom", utilisateur.getNom(),
-                "prenom", utilisateur.getPrenom(),
-                "genre", utilisateur.getGenre(),
-                "email", utilisateur.getEmail(),
-                "phone", utilisateur.getPhone(),
-                "role", utilisateur.getRole().getNom(),
-                Claims.EXPIRATION, new Date(expirationTime),
-                Claims.SUBJECT, utilisateur.getEmail()
-        );
+        final Map<String, Object> claims = new HashMap<>();
+        claims.put("id", utilisateur.getId());
+        claims.put("nom", utilisateur.getNom());
+        claims.put("prenom", utilisateur.getPrenom());
+        claims.put("genre", utilisateur.getGenre());
+        claims.put("email", utilisateur.getEmail());
+        claims.put("phone", utilisateur.getPhone());
+        claims.put("role", utilisateur.getRole().getNom());
+        claims.put(Claims.EXPIRATION, new Date(expirationTime));
+        claims.put(Claims.SUBJECT, utilisateur.getEmail());
 
         final String bearer = Jwts.builder()
                 .setIssuedAt(new Date(currentTime))
@@ -97,11 +116,36 @@ public class JwtService {
                 .setClaims(claims)
                 .signWith(getKey(), SignatureAlgorithm.HS256)
                 .compact();
-        return Map.of(BEARER, bearer);
+        Map<String, String> result = new HashMap<>();
+        result.put("bearer", bearer);
+        return result;
+    }
+
+    private Map<String, String> generateRefreshToken(Utilisateur utilisateur) {
+        final long currentTime = System.currentTimeMillis();
+        final long expirationTime = currentTime + 7 * 24 * 60 * 60 * 1000; // 7 jours
+
+        final Map<String, Object> claims = new HashMap<>();
+        claims.put("id", utilisateur.getId());
+        claims.put("email", utilisateur.getEmail());
+        claims.put("type", "refresh");
+        claims.put(Claims.EXPIRATION, new Date(expirationTime));
+        claims.put(Claims.SUBJECT, utilisateur.getEmail());
+
+        final String refreshToken = Jwts.builder()
+                .setIssuedAt(new Date(currentTime))
+                .setExpiration(new Date(expirationTime))
+                .setSubject(utilisateur.getEmail())
+                .setClaims(claims)
+                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .compact();
+        Map<String, String> result = new HashMap<>();
+        result.put("refreshToken", refreshToken);
+        return result;
     }
 
     private Key getKey() {
-        final byte[] decoder = Decoders.BASE64.decode(ENCRIPTION_KEY);
+        final byte[] decoder = Base64.getDecoder().decode(ENCRIPTION_KEY);
         return Keys.hmacShaKeyFor(decoder);
     }
 
@@ -117,7 +161,9 @@ public class JwtService {
                 .signWith(getKey(), SignatureAlgorithm.HS256) // Assurez-vous que la clé correspond à cet algorithme
                 .compact();
 
-        return Map.of("token", token);
+        Map<String, String> result = new HashMap<>();
+        result.put("token", token);
+        return result;
     }
 
     public String getEmailFromToken(String token) {

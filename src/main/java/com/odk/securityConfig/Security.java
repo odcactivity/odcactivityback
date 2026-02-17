@@ -62,6 +62,17 @@ public class Security {
                         .requestMatchers("/entites/**").permitAll()
                         .requestMatchers("/reportinghebdo/**").permitAll()
                         .requestMatchers("/reporting/**").permitAll()
+                        .requestMatchers("/api/validation-test/**").permitAll()  // Endpoint de test pour validation de fichiers
+                        .requestMatchers("/api/debug/**").permitAll()  // Endpoint de debug
+                        .requestMatchers("/api/courriers/reponse").permitAll()  // Endpoint de réponse aux courriers
+                        .requestMatchers("/api/courriers/*/reponses").permitAll()  // Endpoint pour voir les réponses
+                        .requestMatchers("/api/courriers/*/has-reponded").permitAll()  // Endpoint pour vérifier si déjà répondu
+                        .requestMatchers("/api/courriers/*/1").permitAll()  // Endpoint pour filtrer par statut
+                        .requestMatchers("/api/courriers/ENVOYER/**").permitAll()  // Endpoint pour statut ENVOYER
+                        .requestMatchers("/api/courriers/IMPUTER/**").permitAll()  // Endpoint pour statut IMPUTER
+                        .requestMatchers("/api/courriers/EN_COURS/**").permitAll()  // Endpoint pour statut EN_COURS
+                        .requestMatchers("/api/courriers/ARCHIVER/**").permitAll()  // Endpoint pour statut ARCHIVER
+                        .requestMatchers("/api/courriers/REPONDU/**").permitAll()  // Endpoint pour statut REPONDU
 
                         //Endpoints supportActivite ......
                         .requestMatchers("/api/supports").hasAnyRole("PERSONNEL","SUPERADMIN") //Get all...

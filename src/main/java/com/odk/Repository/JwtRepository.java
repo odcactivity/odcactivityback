@@ -16,7 +16,7 @@ public interface JwtRepository extends JpaRepository<Jwt, Long> {
     @Query("FROM Jwt j WHERE j.utilisateur.email = :email")
     Stream<Jwt> findUtilisateur(String email);
 
-    @Query("FROM Jwt j WHERE j.refreshToken.valeur = :valeur")
+    @Query("FROM Jwt j WHERE j.refreshToken = :valeur")
     Optional<Jwt> findByRefreshToken(String valeur);
 
     void deleteAllByExpireAndDesactive(boolean expire, boolean desactive);
