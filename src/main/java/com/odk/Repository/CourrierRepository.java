@@ -1,7 +1,10 @@
 package com.odk.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import com.odk.Entity.Courrier;
 import com.odk.Enum.StatutCourrier;
@@ -23,4 +26,13 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     //Récupérer les courriers archivés
     List<Courrier> findByEntiteIdAndStatut(Long entiteId, StatutCourrier statut);
+
+    /**
+     * Trouve les courriers qui nécessitent un rappel (date limite dans 7 jours ou moins)
+     */
+    @Query("SELECT c FROM Courrier c WHERE c.statut NOT IN ('ARCHIVER', 'REPONDU') " +
+           "AND c.rappelEnvoye = false " +
+           "AND c.dateLimite <= :dateRappel " +
+           "ORDER BY c.dateLimite ASC")
+    List<Courrier> findCourriersPourRappel(@Param("dateRappel") LocalDate dateRappel);
 }

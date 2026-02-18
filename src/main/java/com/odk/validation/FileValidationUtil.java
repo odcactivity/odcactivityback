@@ -68,11 +68,12 @@ public class FileValidationUtil {
 
         // 4. Vérification du nom du fichier (sécurité)
         String normalizedFilename = normalizeFilename(originalFilename);
-        if (!originalFilename.equals(normalizedFilename)) {
-            return ValidationResult.failure(
-                "Le nom du fichier contient des caractères non valides. Nom suggéré : " + normalizedFilename
-            );
-        }
+        // On ne bloque plus sur la différence de nom, on normalise simplement
+        // if (!originalFilename.equals(normalizedFilename)) {
+        //     return ValidationResult.failure(
+        //         "Le nom du fichier contient des caractères non valides. Nom suggéré : " + normalizedFilename
+        //     );
+        // }
 
         return ValidationResult.success();
     }
@@ -93,20 +94,23 @@ public class FileValidationUtil {
     public static String normalizeFilename(String filename) {
         if (filename == null) return null;
 
-        // Supprimer les caractères spéciaux dangereux
-        String normalized = filename.replaceAll("[^a-zA-Z0-9._-]", "_");
+        // Supprimer les caractères vraiment dangereux (conserver les accents, espaces, tirets, underscores)
+        String normalized = filename.replaceAll("[<>:\"/\\\\|?*]", "_");
         
-        // Remplacer les espaces par des underscores
-        normalized = normalized.replaceAll("\\s+", "_");
+        // Remplacer les espaces multiples par un seul espace
+        normalized = normalized.replaceAll("\\s+", " ");
         
         // Supprimer les points consécutifs sauf le dernier
         normalized = normalized.replaceAll("\\.+(?=\\.)", ".");
+        
+        // Nettoyer les espaces en début et fin
+        normalized = normalized.trim();
         
         // Limiter la longueur du nom
         if (normalized.length() > 100) {
             String extension = getFileExtension(normalized);
             String nameWithoutExt = normalized.substring(0, normalized.lastIndexOf('.'));
-            normalized = nameWithoutExt.substring(0, 50) + "." + extension;
+            normalized = nameWithoutExt.substring(0, 80) + "." + extension;
         }
 
         return normalized;

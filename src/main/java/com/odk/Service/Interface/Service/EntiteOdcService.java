@@ -181,4 +181,29 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Test de la liaison responsable-entité
+     */
+    public String testLiaisonResponsable(Long entiteId) {
+        Optional<Entite> entiteOpt = entiteOdcRepository.findById(entiteId);
+        if (entiteOpt.isEmpty()) {
+            return "Entité non trouvée";
+        }
+        
+        Entite entite = entiteOpt.get();
+        StringBuilder result = new StringBuilder();
+        result.append("Entité: ").append(entite.getNom()).append("\n");
+        result.append("Type: ").append(entite.getType()).append("\n");
+        
+        if (entite.getResponsable() != null) {
+            result.append("Responsable ID: ").append(entite.getResponsable().getId()).append("\n");
+            result.append("Responsable Nom: ").append(entite.getResponsable().getNom()).append("\n");
+            result.append("Responsable Email: ").append(entite.getResponsable().getEmail()).append("\n");
+        } else {
+            result.append("Responsable: NULL ❌\n");
+        }
+        
+        return result.toString();
+    }
+
 }

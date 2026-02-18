@@ -48,78 +48,50 @@ public class EntiteOdcController {
 
     @PostMapping(value = "/create",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
-    public ResponseEntity<Entite> ajout(
+    public ResponseEntity<EntiteDTO> ajout(
             @RequestPart("entiteOdc") String entiteOdcJson,
             @RequestPart("logo") MultipartFile logo,
-            @RequestParam("utilisateurId") Long utilisateurId,
-            @RequestParam("typeActiviteIds") List<Long> typeActiviteIds) {
+            @RequestParam(value = "utilisateurId", required = false) Long utilisateurId,
+            @RequestParam(value = "typeActiviteIds", required = false) List<Long> typeActiviteIds) {
 
         try {
-            // Convertir le JSON en objet Entite avec gestion du responsable
+            // Convertir le JSON en EntiteDTO
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(entiteOdcJson);
+            EntiteDTO entiteDTO = mapper.readValue(entiteOdcJson, EntiteDTO.class);
             
-            // Créer une copie du JSON pour modifier le responsable si nécessaire
-            ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
-            
-            // Si le responsable est un objet, extraire l'ID
-            JsonNode responsableNode = rootNode.get("responsable");
-            if (responsableNode != null && responsableNode.isObject()) {
-                JsonNode idNode = responsableNode.get("id");
-                if (idNode != null) {
-                    modifiedNode.put("responsable", idNode.asLong());
-                }
+            // Si utilisateurId est fourni, l'utiliser comme responsable
+            if (utilisateurId != null) {
+                entiteDTO.setResponsable(utilisateurId);
             }
             
-            // Convertir le JSON modifié en objet Entite
-            Entite entite = mapper.treeToValue(modifiedNode, Entite.class);
-
-            // Sauvegarder le fichier image
-//            String imagePath = fileStorage.saveImage(logo);
-//            entite.setLogo(imagePath);
-            if (logo != null) {
-            String imagePath = fileStorage.saveImage(logo);
-            entite.setLogo(imagePath);
-        }
-            // Récupérer l'utilisateur par ID
-            Optional<Utilisateur> utilisateurOpt = utilisateurService.findById(utilisateurId);
-            // Vérifier si l'utilisateur est présent
-            if (utilisateurOpt.isPresent()) {
-                Utilisateur utilisateur = utilisateurOpt.get();
-
-                entite.setResponsable(utilisateur);
-            } else {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé avec l'ID : " + utilisateurId);
-            }
-
-            // Récupérer les TypeActivite par leurs IDs
-            List<TypeActivite> typeActivites = typeActiviteRepository.findAllById(typeActiviteIds);
-            entite.setTypeActivitesIds(typeActivites);
-
-            // Ajouter l'entité
-            Entite createdFormation = entiteOdcService.add(entite);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdFormation);
+            // Utiliser le service unifié pour la création
+            EntiteDTO savedEntite = entiteOdcService.ajouter(entiteDTO, logo);
+            
+            return ResponseEntity.ok(savedEntite);
+            
         } catch (JsonProcessingException e) {
-            e.printStackTrace();  // Log de l'erreur JSON
-            return ResponseEntity.badRequest().body(null);  // Erreur de conversion JSON
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "JSON invalide: " + e.getMessage());
         } catch (Exception e) {
-            e.printStackTrace();  // Log de l'erreur générale
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);  // Erreurs générales
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erreur lors de la création: " + e.getMessage());
         }
     }
 
-//    @GetMapping
-//    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
-//    @ResponseStatus(HttpStatus.OK)
-//    public List<EntiteDTO> ListerEntite(){
-//          return entiteOdcService.allList();
-//    }
     @GetMapping
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
     public ResponseEntity<List<EntiteDTO>> ListerEntite2(){
         List<EntiteDTO>entities=entiteOdcService.allList();
         System.out.println("je suis dans entite========="+entities);
         return ResponseEntity.ok(entities);
+    }
+    
+    /**
+     * Endpoint de test pour vérifier la liaison responsable-entité
+     */
+    @GetMapping("/test-responsable/{entiteId}")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    public ResponseEntity<String> testLiaisonResponsable(@PathVariable Long entiteId) {
+        String result = entiteOdcService.testLiaisonResponsable(entiteId);
+        return ResponseEntity.ok(result);
     }
     
     @GetMapping("/{id}")
