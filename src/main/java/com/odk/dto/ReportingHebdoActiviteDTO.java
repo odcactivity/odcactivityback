@@ -1,6 +1,5 @@
 package com.odk.dto;
 
-import com.odk.Entity.Entite;
 import com.odk.Entity.TypeActivite;
 import com.odk.Enum.Statut;
 
@@ -17,15 +16,16 @@ public class ReportingHebdoActiviteDTO {
     private String lieu;
     private String description;
     private Integer objectifParticipation;
-    private Entite entite;
+
+    // ✅ On envoie seulement le nom de l'entité
+    private String entiteNom;
+
     private String createdBy;
     private TypeActivite typeActivite;
     private Integer candidatureRecu;
     private Integer candidatureFemme;
     private Integer cible;
 
-
-    // Constructeur
     public ReportingHebdoActiviteDTO(
             Long id,
             String nom,
@@ -36,7 +36,7 @@ public class ReportingHebdoActiviteDTO {
             String lieu,
             String description,
             Integer objectifParticipation,
-            Entite entite,
+            String entiteNom,
             String createdBy,
             TypeActivite typeActivite,
             Integer candidatureRecu,
@@ -52,7 +52,7 @@ public class ReportingHebdoActiviteDTO {
         this.lieu = lieu;
         this.description = description;
         this.objectifParticipation = objectifParticipation;
-        this.entite = entite;
+        this.entiteNom = entiteNom;
         this.createdBy = createdBy;
         this.typeActivite = typeActivite;
         this.candidatureRecu = candidatureRecu;
@@ -60,7 +60,6 @@ public class ReportingHebdoActiviteDTO {
         this.cible = cible;
     }
 
-    // Getters
     public Long getId() { return id; }
     public String getNom() { return nom; }
     public String getTitre() { return titre; }
@@ -70,13 +69,10 @@ public class ReportingHebdoActiviteDTO {
     public String getLieu() { return lieu; }
     public String getDescription() { return description; }
     public Integer getObjectifParticipation() { return objectifParticipation; }
-    public Entite getEntite() { return entite; }
+    public String getEntiteNom() { return entiteNom; }
     public String getCreatedBy() { return createdBy; }
-    public TypeActivite getTypeActivite() { return typeActivite;}
-        public Integer getCandidatureRecu() { return candidatureRecu; }
-        public Integer getCandidatureFemme() { return candidatureFemme; }
-        public Integer getCible() { return cible; }
-
-
-    }
-
+    public TypeActivite getTypeActivite() { return typeActivite; }
+    public Integer getCandidatureRecu() { return candidatureRecu; }
+    public Integer getCandidatureFemme() { return candidatureFemme; }
+    public Integer getCible() { return cible; }
+}

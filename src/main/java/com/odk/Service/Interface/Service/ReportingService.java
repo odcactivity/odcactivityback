@@ -17,40 +17,65 @@ public class ReportingService {
     private final ParticipantRepository participantRepository;
 
     /**
-     * Récupérer tous les participants
+     * Reporting complet avec filtres optionnels
      */
-    public List<ReportingDTO> getAllParticipants() {
-        return participantRepository.findAll().stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
-    }
+    public List<ReportingDTO> getParticipantsFiltered(
+            Long entiteId,
+            Long activiteId,
+            Integer annee
+    ) {
 
-    /**
-     * Récupérer les participants filtrés par entité et année
-     */
-    public List<ReportingDTO> getParticipantsFiltered(Long entiteId, Integer annee) {
         return participantRepository.findAll().stream()
                 .filter(p -> {
-                    boolean okEntite = entiteId == null ||
-                            (p.getActivite() != null &&
-                                    p.getActivite().getEntite() != null &&
-                                    p.getActivite().getEntite().getId().equals(entiteId));
 
-                    boolean okAnnee = annee == null ||
-                            (p.getActivite() != null &&
-                                    p.getActivite().getDateDebut() != null &&
-                                    p.getActivite().getDateDebut().toInstant()
-                                            .atZone(ZoneId.systemDefault())
-                                            .getYear() == annee);
+                    if (p.getActivite() == null) return false;
 
-                    return okEntite && okAnnee;
+                    boolean okEntite = true;
+                    boolean okActivite = true;
+                    boolean okAnnee = true;
+
+                    // ✅ FILTRE ENTITE (Direction ou Service)
+                    if (entiteId != null) {
+                        if (p.getActivite().getEntite() != null) {
+
+                            Long currentEntiteId = p.getActivite().getEntite().getId();
+
+                            Long parentId = p.getActivite().getEntite().getParent() != null
+                                    ? p.getActivite().getEntite().getParent().getId()
+                                    : null;
+
+                            okEntite = entiteId.equals(currentEntiteId)
+                                    || entiteId.equals(parentId);
+
+                        } else {
+                            okEntite = false;
+                        }
+                    }
+
+                    // ✅ FILTRE ACTIVITE
+                    if (activiteId != null) {
+                        okActivite = activiteId.equals(p.getActivite().getId());
+                    }
+
+                    // ✅ FILTRE ANNEE
+                    if (annee != null && p.getActivite().getDateDebut() != null) {
+
+                        int year = p.getActivite().getDateDebut()
+                                .toInstant()
+                                .atZone(ZoneId.systemDefault())
+                                .getYear();
+
+                        okAnnee = year == annee;
+                    }
+
+                    return okEntite && okActivite && okAnnee;
                 })
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Mapper un participant en DTO
+     * Mapper Participant → ReportingDTO
      */
     private ReportingDTO mapToDTO(Participant p) {
         return new ReportingDTO(

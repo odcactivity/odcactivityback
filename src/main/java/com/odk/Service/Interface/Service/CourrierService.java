@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 import com.odk.Enum.TypeEntite;
 import org.springframework.core.io.InputStreamResource;
@@ -184,19 +185,19 @@ public class CourrierService {
 // ======================================================
 //  PARTIE 5 : CONSULTATION DES COURRIERS
 // ======================================================
-   /**
+    /**
      * Liste des courriers actifs (non archivés) pour une entité donnée
-   */
+     */
     public List<Courrier> courriersActifs(Long entiteId) {
-    return courrierRepository.findByEntiteIdAndStatutNot(entiteId, StatutCourrier.ARCHIVER);
-   }
+        return courrierRepository.findByEntiteIdAndStatutNot(entiteId, StatutCourrier.ARCHIVER);
+    }
 
     /**
-        * Liste des courriers archivés pour une entité donnée
-    */
-        public List<Courrier> courriersArchives(Long entiteId) {
-            return courrierRepository.findByEntiteIdAndStatut(entiteId, StatutCourrier.ARCHIVER);
-        }
+     * Liste des courriers archivés pour une entité donnée
+     */
+    public List<Courrier> courriersArchives(Long entiteId) {
+        return courrierRepository.findByEntiteIdAndStatut(entiteId, StatutCourrier.ARCHIVER);
+    }
     /* ======================================================
      *  OUVERTURE / TRAITEMENT
      * ====================================================== */
@@ -297,35 +298,35 @@ public class CourrierService {
         }
 
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
-        
+
         // Création du répertoire sécurisé
         Files.createDirectories(uploadPath);
-        
+
         // Génération d'un nom de fichier sécurisé
         String originalFilename = fichier.getOriginalFilename();
         String extension = "";
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
-        
-        String nomFichier = System.currentTimeMillis() + "_" + 
-            FileValidationUtil.normalizeFilename(originalFilename.substring(0, originalFilename.lastIndexOf("."))) + extension;
-        
+
+        String nomFichier = System.currentTimeMillis() + "_" +
+                FileValidationUtil.normalizeFilename(originalFilename.substring(0, originalFilename.lastIndexOf("."))) + extension;
+
         Path destination = uploadPath.resolve(nomFichier);
-        
+
         // Vérification que le chemin est bien dans le répertoire autorisé
         if (!destination.startsWith(uploadPath)) {
             throw new FileValidationException("Tentative de chemin de fichier non autorisée");
         }
-        
+
         // Sauvegarde du fichier
         fichier.transferTo(destination.toFile());
-        
+
         // Vérification finale que le fichier existe et est accessible
         if (!Files.exists(destination) || !Files.isReadable(destination)) {
             throw new FileValidationException("Échec de la sauvegarde du fichier");
         }
-        
+
         return destination.toString();
     }
 
@@ -344,7 +345,9 @@ public class CourrierService {
     /**
      * Récupère les courriers par statut et entité
      */
-    public List<Courrier> getCourriersByStatutAndEntite(StatutCourrier statut, Long entiteId) {
-        return courrierRepository.findByEntiteIdAndStatut(entiteId, statut);
+    public List<Courrier> getCourriersByStatutAndEntite(StatutCourrier statut, Long directionInitial) {
+        Optional<Entite> entite=entiteRepository.findById(directionInitial);
+        return courrierRepository.findByDirectionInitial(entite.get());
+                //findByEntiteIdAndStatut(entiteId, statut);
     }
 }

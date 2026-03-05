@@ -26,7 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class ActiviteValidationService{
 
- 
+
     @Autowired
     private ActiviteValidationRepository validationRepository;
 
@@ -35,6 +35,7 @@ public class ActiviteValidationService{
 
     @Autowired
     private UtilisateurRepository utilisateurRepository;
+
 
     // Ajouter une validation avec fichier
     public ActiviteValidationDTO ajouterValidation(ActiviteValidationDTO dto, MultipartFile fichier) throws IOException {
@@ -87,5 +88,5 @@ public class ActiviteValidationService{
 
         return validation.getFichierjoint();
     }
- 
+
 }

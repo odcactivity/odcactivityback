@@ -11,36 +11,31 @@ import java.util.List;
 @RestController
 @RequestMapping("/reporting")
 @AllArgsConstructor
+
 public class ReportingController {
 
     private final ReportingService reportingService;
 
     /**
-     * Récupérer tous les participants
+     * 🔹 Reporting complet avec filtres optionnels
+     *
+     * Exemple d'appel :
+     * /reporting
+     * /reporting?entiteId=1
+     * /reporting?activiteId=3
+     * /reporting?annee=2025
+     * /reporting?entiteId=1&activiteId=3&annee=2025
      */
-    @GetMapping("/participants")
-    public ResponseEntity<List<ReportingDTO>> getAllParticipants() {
-        return ResponseEntity.ok(reportingService.getAllParticipants());
-    }
-
-    /**
-     * Récupérer les participants filtrés par entité et année
-     * @param entiteId id de l'entité (optionnel)
-     * @param annee année (optionnelle)
-     */
-    @GetMapping("/participants/filter")
-    public ResponseEntity<List<ReportingDTO>> getFilteredParticipants(
+    @GetMapping
+    public ResponseEntity<List<ReportingDTO>> getReporting(
             @RequestParam(required = false) Long entiteId,
+            @RequestParam(required = false) Long activiteId,
             @RequestParam(required = false) Integer annee
     ) {
-        return ResponseEntity.ok(reportingService.getParticipantsFiltered(entiteId, annee));
-    }
 
-    /**
-     * Récupérer les participants par genre
-     */
-    @GetMapping("/participants-par-genre")
-    public ResponseEntity<List<ReportingDTO>> getParticipantsParGenre() {
-        return ResponseEntity.ok(reportingService.getAllParticipants());
+        List<ReportingDTO> result =
+                reportingService.getParticipantsFiltered(entiteId, activiteId, annee);
+
+        return ResponseEntity.ok(result);
     }
 }

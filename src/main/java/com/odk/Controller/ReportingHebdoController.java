@@ -13,41 +13,22 @@ import java.util.Date;
 import java.util.List;
 
 @RestController
-@RequestMapping("/reportinghebdo")
+@RequestMapping("/reporting")
 @AllArgsConstructor
-@CrossOrigin(origins = "http://localhost:4200",
-        allowCredentials = "true")
+@CrossOrigin(origins = "http://localhost:4200")
 public class ReportingHebdoController {
 
-    private final ReportingHebdoService reportingHebdoService;
+    private final ReportingHebdoService reportingService;
 
-    /**
-     * Endpoint Reporting Hebdomadaire
-     * filtre : entité + date début + date fin
-     */
     @GetMapping("/activites")
     public ResponseEntity<List<ReportingHebdoActiviteDTO>> getActivitesHebdo(
-            @RequestParam("entiteId") Long entiteId,
-            @RequestParam("dateDebut")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dateDebut,
-            @RequestParam("dateFin")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dateFin
+            @RequestParam Long entiteId,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") Date dateDebut,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") Date dateFin
     ) {
 
-        Date start = Date.from(
-                dateDebut.atStartOfDay(ZoneId.systemDefault()).toInstant()
-        );
-
-        Date end = Date.from(
-                dateFin.atTime(23, 59, 59)
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-        );
-
         List<ReportingHebdoActiviteDTO> result =
-                reportingHebdoService.getActivitesHebdo(entiteId, start, end);
+                reportingService.getActivitesHebdo(entiteId, dateDebut, dateFin);
 
         return ResponseEntity.ok(result);
     }

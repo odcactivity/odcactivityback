@@ -58,17 +58,17 @@ public class EntiteOdcController {
             // Convertir le JSON en EntiteDTO
             ObjectMapper mapper = new ObjectMapper();
             EntiteDTO entiteDTO = mapper.readValue(entiteOdcJson, EntiteDTO.class);
-            
+
             // Si utilisateurId est fourni, l'utiliser comme responsable
             if (utilisateurId != null) {
                 entiteDTO.setResponsable(utilisateurId);
             }
-            
+
             // Utiliser le service unifié pour la création
             EntiteDTO savedEntite = entiteOdcService.ajouter(entiteDTO, logo);
-            
+
             return ResponseEntity.ok(savedEntite);
-            
+
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "JSON invalide: " + e.getMessage());
         } catch (Exception e) {
@@ -81,9 +81,11 @@ public class EntiteOdcController {
     public ResponseEntity<List<EntiteDTO>> ListerEntite2(){
         List<EntiteDTO>entities=entiteOdcService.allList();
         System.out.println("je suis dans entite========="+entities);
+
         return ResponseEntity.ok(entities);
+
     }
-    
+
     /**
      * Endpoint de test pour vérifier la liaison responsable-entité
      */
@@ -93,7 +95,7 @@ public class EntiteOdcController {
         String result = entiteOdcService.testLiaisonResponsable(entiteId);
         return ResponseEntity.ok(result);
     }
-    
+
     @GetMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<EntiteDTO> getEntiteParId(@PathVariable Long id) {
@@ -102,13 +104,13 @@ public class EntiteOdcController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    
-    
+
+
     //new de update
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         public ResponseEntity<?> modifier(
         @PathVariable("id") Long entiteId,
-        @RequestPart("entite") String entite,       
+        @RequestPart("entite") String entite,
         @RequestPart(value = "logo", required = false) MultipartFile logo) {
     try {
         System.out.println("✅ Requête reçue pour l'entité " + entiteId);
@@ -116,10 +118,10 @@ public class EntiteOdcController {
         // Désérialisation manuelle du JSON
         ObjectMapper mapper = new ObjectMapper();
         JsonNode rootNode = mapper.readTree(entite);
-        
+
         // Créer une copie du JSON pour modifier le responsable si nécessaire
         ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
-        
+
         // Si le responsable est un objet, extraire l'ID
         JsonNode responsableNode = rootNode.get("responsable");
         if (responsableNode != null && responsableNode.isObject()) {
@@ -128,9 +130,9 @@ public class EntiteOdcController {
                 modifiedNode.put("responsable", idNode.asLong());
             }
         }
-        
+
         // Convertir le JSON modifié en EntiteDTO
-        EntiteDTO entiteDTO = mapper.treeToValue(modifiedNode, EntiteDTO.class);       
+        EntiteDTO entiteDTO = mapper.treeToValue(modifiedNode, EntiteDTO.class);
 
         // Récupération de l'entité existante
         Entite entite1 = entiteOdcService.findById(entiteId)
@@ -146,7 +148,7 @@ public class EntiteOdcController {
         }
         if (entiteDTO.getResponsable() != null) {
             utilisateurService.findById(entiteDTO.getResponsable()).ifPresent(utilisateur -> {
-        if (utilisateur.getRole() != null && 
+        if (utilisateur.getRole() != null &&
             "PERSONNEL".equalsIgnoreCase(utilisateur.getRole().getNom())) {
             entite1.setResponsable(utilisateur);
         } else {
@@ -158,7 +160,7 @@ public class EntiteOdcController {
             List<TypeActivite> typeActivites = typeActiviteRepository.findAllById(entiteDTO.getTypeActivitesIds());
             entite1.setTypeActivitesIds(typeActivites);
         }
-        
+
         Entite updated = entiteOdcService.update(entite1, entiteId);
         return ResponseEntity.ok(updated);
 
@@ -171,7 +173,7 @@ public class EntiteOdcController {
 
     //Fin
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    //@PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")  
+    //@PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
     public ResponseEntity<?> createEntity(
             @RequestPart("entite") String entiteJson,
             @RequestPart(value = "fichier", required = false) MultipartFile fichier) {
@@ -182,10 +184,10 @@ public class EntiteOdcController {
         // Désérialisation manuelle du JSON avec gestion du responsable
         ObjectMapper mapper = new ObjectMapper();
         JsonNode rootNode = mapper.readTree(entiteJson);
-        
+
         // Créer une copie du JSON pour modifier le responsable si nécessaire
         ObjectNode modifiedNode = (ObjectNode) rootNode.deepCopy();
-        
+
         // Si le responsable est un objet, extraire l'ID
         JsonNode responsableNode = rootNode.get("responsable");
         if (responsableNode != null && responsableNode.isObject()) {
@@ -194,7 +196,7 @@ public class EntiteOdcController {
                 modifiedNode.put("responsable", idNode.asLong());
             }
         }
-        
+
         // Convertir le JSON modifié en EntiteDTO
         EntiteDTO dto = mapper.treeToValue(modifiedNode, EntiteDTO.class);
 
@@ -214,7 +216,7 @@ public class EntiteOdcController {
                     .body(Map.of("message", "Erreur interne : " + e.getMessage()));
         }
     }
-    
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPERADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -261,6 +263,13 @@ public class EntiteOdcController {
     public ResponseEntity<List<EntiteDTO>> getDirections() {
         List<EntiteDTO> directions = entiteOdcService.findDirections();
         return ResponseEntity.ok(directions);
+    }
+
+    @GetMapping("/services")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    public ResponseEntity<List<EntiteDTO>> getAllServices() {
+        List<EntiteDTO> services = entiteOdcService.findAllServices();
+        return ResponseEntity.ok(services);
     }
 
     @GetMapping("/parent/{parentId}")

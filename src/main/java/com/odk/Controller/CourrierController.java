@@ -87,24 +87,24 @@ public class CourrierController {
     /* ======================================================
      *  PARTIE 3 : OUVERTURE / DÉBUT DE TRAITEMENT
      * ====================================================== */
-  @GetMapping("/{id}/ouvrir")
-   public ResponseEntity<InputStreamResource> ouvrirCourrier(
-        @PathVariable Long id,
-        @AuthenticationPrincipal Utilisateur utilisateur
-      ) throws IOException {
-    return courrierService.ouvrirCourrier(id, utilisateur);
+    @GetMapping("/{id}/ouvrir")
+    public ResponseEntity<InputStreamResource> ouvrirCourrier(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur
+    ) throws IOException {
+        return courrierService.ouvrirCourrier(id, utilisateur);
     }
 
     /* ======================================================
      *  PARTIE 4 : ARCHIVAGE
      * ====================================================== */
-        @PatchMapping("/archiver/{id}")
-         public ResponseEntity<Void> archiverCourrier(
+    @PatchMapping("/archiver/{id}")
+    public ResponseEntity<Void> archiverCourrier(
             @PathVariable Long id,
             @AuthenticationPrincipal Utilisateur utilisateur
-         ) {
-            courrierService.archiverCourrier(id, utilisateur);
-            return ResponseEntity.ok().build();
+    ) {
+        courrierService.archiverCourrier(id, utilisateur);
+        return ResponseEntity.ok().build();
     }
 
     /* ======================================================
@@ -137,7 +137,7 @@ public class CourrierController {
             @RequestParam(required = false) MultipartFile file,
             @RequestParam(required = false) List<MultipartFile> attachments
     ) throws IOException {
-        
+
         ReponseCourrierDTO dto = new ReponseCourrierDTO();
         dto.setCourrierId(courrierId);
         dto.setEmail(email);

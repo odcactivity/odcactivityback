@@ -28,14 +28,14 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
     public Entite add(Entite entiteOdc) {
         return entiteOdcRepository.save(entiteOdc);
     }
-   
-    public Entite add2(Entite entiteOdc,MultipartFile File) {        
+
+    public Entite add2(Entite entiteOdc,MultipartFile File) {
         return entiteOdcRepository.save(entiteOdc);
     }
     public EntiteDTO ajouter(EntiteDTO dto, MultipartFile fichier) throws IOException {
         // Validation de la logique hiérarchique
         validerHierarchieEntite(dto);
-        
+
         Entite entite = EntiteMapper.toEntity(dto);
 
         // Gestion du responsable
@@ -78,13 +78,13 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
             if (dto.getParentId() == null) {
                 throw new IllegalArgumentException("Un service doit avoir un parent (parentId obligatoire)");
             }
-            
+
             // Vérifier que le parent existe et est bien une direction
             Optional<Entite> parentOpt = entiteOdcRepository.findById(dto.getParentId());
             if (parentOpt.isEmpty()) {
                 throw new IllegalArgumentException("L'entité parent avec l'ID " + dto.getParentId() + " n'existe pas");
             }
-            
+
             Entite parent = parentOpt.get();
             if (parent.getType() != TypeEntite.DIRECTION) {
                 throw new IllegalArgumentException("Un service doit avoir comme parent une direction, pas un autre service");
@@ -172,6 +172,13 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
                 .map(EntiteMapper::toDto)
                 .collect(Collectors.toList());
     }
+    // Récupère tous les services (sans les directions)
+    public List<EntiteDTO> findAllServices() {
+        return entiteOdcRepository.findByType(TypeEntite.SERVICE)
+                .stream()
+                .map(EntiteMapper::toDto)
+                .collect(Collectors.toList());
+    }
 
     // Récupérer les services d'une direction parente
     public List<EntiteDTO> findServicesByParent(Long parentId) {
@@ -189,12 +196,12 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
         if (entiteOpt.isEmpty()) {
             return "Entité non trouvée";
         }
-        
+
         Entite entite = entiteOpt.get();
         StringBuilder result = new StringBuilder();
         result.append("Entité: ").append(entite.getNom()).append("\n");
         result.append("Type: ").append(entite.getType()).append("\n");
-        
+
         if (entite.getResponsable() != null) {
             result.append("Responsable ID: ").append(entite.getResponsable().getId()).append("\n");
             result.append("Responsable Nom: ").append(entite.getResponsable().getNom()).append("\n");
@@ -202,8 +209,11 @@ public class EntiteOdcService implements CrudService<Entite, Long> {
         } else {
             result.append("Responsable: NULL ❌\n");
         }
-        
+
         return result.toString();
     }
 
 }
+
+
+
