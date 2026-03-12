@@ -1,4 +1,4 @@
-package com.odk.securityConfig;
+/* package com.odk.securityConfig;
 
 
 import org.springframework.context.annotation.Configuration;
@@ -22,3 +22,4 @@ public class WebConfig implements WebMvcConfigurer {
                 .addResourceLocations("file:images/");
     }
 }
+*/
