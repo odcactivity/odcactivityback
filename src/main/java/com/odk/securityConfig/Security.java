@@ -97,10 +97,6 @@ public class Security {
                 .build();
     }
 
-    @Bean
-    public WebSecurityCustomizer webSecurityCustomizer() {
-        return (web) -> web.ignoring().requestMatchers("/images/**");
-    }
 
     // --- CORS Configuration pour Spring Security ---
     @Bean
