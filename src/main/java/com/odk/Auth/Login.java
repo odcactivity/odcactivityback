@@ -36,7 +36,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/auth") // Uniquement /auth pour éviter les conflits
-@CrossOrigin(origins = {"http://localhost:4200", "http://localhost:8089", "http://localhost:60409", "http://localhost:63243"})
+@CrossOrigin(origins = {"http://localhost:4200", "http://localhost:8089", "http://localhost:60409", "http://hebergement-odc-activite-front.s3-website-us-east-1.amazonaws.com","http://localhost:63243"})
 @AllArgsConstructor
 @Slf4j
 @Transactional
