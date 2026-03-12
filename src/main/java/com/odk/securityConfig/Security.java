@@ -37,6 +37,7 @@ public class Security {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize -> authorize
                                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                                .requestMatchers("/images/**").permitAll()
                                 .requestMatchers(
                                         "/swagger-ui/**",
                                         "/swagger-ui.html",
@@ -58,7 +59,6 @@ public class Security {
                                 ).permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/activitevalidation/**").permitAll()  // Autoriser les routes d'authentification
-                        .requestMatchers("/images/**").permitAll()
                         .requestMatchers("/utilisateur/modifierMotDePasse").authenticated()
                         .requestMatchers("/role/**").hasRole("SUPERADMIN")
                         .requestMatchers("/entites/**").permitAll()
@@ -97,16 +97,8 @@ public class Security {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
-    }
-
-    @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder);
-        return provider;
+    public WebSecurityCustomizer webSecurityCustomizer() {
+        return (web) -> web.ignoring().requestMatchers("/images/**");
     }
 
     // --- CORS Configuration pour Spring Security ---
