@@ -11,12 +11,12 @@ import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/images")
+@CrossOrigin(origins = "*")
 public class ImageController {
 
-    private static final String UPLOAD_DIR =
-            System.getProperty("user.dir") + "/uploads/users/";
+    private static final String UPLOAD_DIR = "images/personnels/";
 
-    @GetMapping("/{filename}")
+    @GetMapping("/personnels/{filename:.+}") // Le :.+ permet de bien lire les extensions .png
     public ResponseEntity<Resource> getImage(@PathVariable String filename) {
         try {
             Path path = Paths.get(UPLOAD_DIR).resolve(filename).normalize();
