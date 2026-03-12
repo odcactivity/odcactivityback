@@ -41,6 +41,7 @@ public class Security {
                                         "/swagger-ui/**",
                                         "/swagger-ui.html",
                                         "/v3/api-docs/**",
+                                        "/images/**",
                                         "/v3/api-docs.yaml",
                                         "/swagger-resources/**",
                                         "/webjars/**",
@@ -61,8 +62,7 @@ public class Security {
                         .requestMatchers("/utilisateur/modifierMotDePasse").authenticated()
                         .requestMatchers("/role/**").hasRole("SUPERADMIN")
                         .requestMatchers("/entites/**").permitAll()
-                        .requestMatchers("/reportinghebdo/**").permitAll()
-                        .requestMatchers("/reporting/**").permitAll()
+                        .requestMatchers("/reporting/**", "/reportinghebdo/**").permitAll()
                         .requestMatchers("/api/validation-test/**").permitAll()  // Endpoint de test pour validation de fichiers
                         .requestMatchers("/api/debug/**").permitAll()  // Endpoint de debug
                         .requestMatchers("/api/courriers/reponse").permitAll()  // Endpoint de réponse aux courriers
