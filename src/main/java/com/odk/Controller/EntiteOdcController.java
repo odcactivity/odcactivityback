@@ -11,6 +11,7 @@ import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.TypeActiviteRepository;
 import com.odk.Service.Interface.Service.EntiteOdcService;
 import com.odk.Service.Interface.Service.FileStorage;
+import com.odk.Service.Interface.Service.UploadFileService;
 import com.odk.Service.Interface.Service.UtilisateurService;
 import com.odk.dto.ActiviteValidationDTO;
 import com.odk.dto.EntiteDTO;
@@ -42,6 +43,7 @@ public class EntiteOdcController {
     private ObjectMapper objectMapper;
     private EntiteOdcService entiteOdcService;
     private FileStorage fileStorage;
+    private final UploadFileService uploadFileService;
     private UtilisateurService utilisateurService;
     private TypeActiviteRepository typeActiviteRepository;
 
@@ -62,6 +64,12 @@ public class EntiteOdcController {
             // Si utilisateurId est fourni, l'utiliser comme responsable
             if (utilisateurId != null) {
                 entiteDTO.setResponsable(utilisateurId);
+            }
+
+            // Logo : upload S3 (bucket odc-activite-assets), URL stockée en base (persistant, pas de perte au redéploiement)
+            if (logo != null && !logo.isEmpty()) {
+                String logoUrl = uploadFileService.uploadLogoAndReturnUrl(logo);
+                entiteDTO.setLogo(logoUrl);
             }
 
             // Utiliser le service unifié pour la création
@@ -142,9 +150,9 @@ public class EntiteOdcController {
         entite1.setNom(entiteDTO.getNom());
         entite1.setDescription(entiteDTO.getDescription());
 
-        if (logo != null) {
-            String imagePath = fileStorage.saveImage(logo);
-            entite1.setLogo(imagePath);
+        if (logo != null && !logo.isEmpty()) {
+            String logoUrl = uploadFileService.uploadLogoAndReturnUrl(logo);
+            entite1.setLogo(logoUrl);
         }
         if (entiteDTO.getResponsable() != null) {
             utilisateurService.findById(entiteDTO.getResponsable()).ifPresent(utilisateur -> {
@@ -200,11 +208,10 @@ public class EntiteOdcController {
         // Convertir le JSON modifié en EntiteDTO
         EntiteDTO dto = mapper.treeToValue(modifiedNode, EntiteDTO.class);
 
-            // Sauvegarde du fichier si présent
+            // Logo : upload S3 (bucket odc-activite-assets), URL stockée en base
             if (fichier != null && !fichier.isEmpty()) {
-                String imagePath = fileStorage.saveImage(fichier);
-                System.out.println("lien logo==="+imagePath);
-                dto.setLogo(imagePath);
+                String logoUrl = uploadFileService.uploadLogoAndReturnUrl(fichier);
+                dto.setLogo(logoUrl);
             }
 
             EntiteDTO saved = entiteOdcService.ajouter(dto, fichier);

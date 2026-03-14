@@ -22,6 +22,29 @@ public class UploadFileService {
     private S3Client s3Client;
 
     private final String bucketName = "odc-activite-assets";
+    private static final String REGION = "us-east-1";
+    private static final String LOGOS_FOLDER = "personnels";
+
+    /**
+     * Upload un logo d'entité vers S3 et retourne l'URL publique.
+     * Les images sont stockées dans le bucket, pas sur le disque du serveur (persistant, pas de perte au redéploiement).
+     */
+    public String uploadLogoAndReturnUrl(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) throw new IOException("Fichier logo vide");
+        String extension = StringUtils.getFilenameExtension(file.getOriginalFilename());
+        if (extension == null || !extension.matches("(?i)jpg|jpeg|png")) throw new IOException("Format d'image non supporté (jpg, png)");
+        String filename = Calendar.getInstance().getTimeInMillis() + "." + extension;
+        String key = LOGOS_FOLDER + "/" + filename;
+        try (InputStream is = file.getInputStream()) {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .contentType(file.getContentType())
+                    .build();
+            s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(is, file.getSize()));
+        }
+        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, REGION, key);
+    }
 
     public String uploadFile(MultipartFile file, String folderName) throws IOException {
         String extension = StringUtils.getFilenameExtension(file.getOriginalFilename());

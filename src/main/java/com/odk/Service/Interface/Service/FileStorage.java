@@ -30,7 +30,7 @@ public class FileStorage {
 
         Files.copy(fichier.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-        return IMAGE_DIR + "/" + fileName;
+        return IMAGE_DIR + fileName;
     }
 
     private String getFileExtension(String filename) {
