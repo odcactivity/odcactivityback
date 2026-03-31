@@ -56,7 +56,23 @@ public class Utilisateur implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.singletonList(new SimpleGrantedAuthority("ROLE_"+this.role.getNom()));
+        if (this.role == null || this.role.getNom() == null) {
+            return Collections.emptyList();
+        }
+
+        String roleName = this.role.getNom().trim().toUpperCase();
+        List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
+        grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_" + roleName));
+
+        // Compatibilite: certains comptes ont ete renommes ADMIN au lieu de SUPERADMIN.
+        // On accorde les deux autorites pour eviter les Access Denied.
+        if ("ADMIN".equals(roleName)) {
+            grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_SUPERADMIN"));
+        } else if ("SUPERADMIN".equals(roleName)) {
+            grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
+
+        return grantedAuthorities;
     }
 
     @Override
