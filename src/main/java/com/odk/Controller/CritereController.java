@@ -27,14 +27,14 @@ public class CritereController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public List<Critere> lister() {
         return critereService.List();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Critere> getCritereParId(@PathVariable Long id) {
         return critereService.findById(id)
                 .map(ResponseEntity::ok)

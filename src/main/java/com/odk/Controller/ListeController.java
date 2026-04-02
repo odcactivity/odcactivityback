@@ -19,13 +19,13 @@ public class ListeController {
     private ListeService listeService;
     private ActiviteParticipantRepository activiteParticipantRepository;
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public List<ListeDTO> getAllListes() {
         return listeService.getAllListes();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public Optional<ListeDTO> getListeById(@PathVariable Long id) {
         return listeService.getFindById(id);
     }
@@ -40,7 +40,7 @@ public class ListeController {
         listeService.delete(id);
     }
     @PostMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public List<ListeDTO> addListes() {
         return listeService.getAllListes();
     }

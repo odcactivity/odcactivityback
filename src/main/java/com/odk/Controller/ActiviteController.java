@@ -50,7 +50,7 @@ public class ActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public List<ActiviteDTO> listerActivite() {
 //        System.out.println("activite dto===="+activiteMapper.listeActivite(activiteService.List()));
@@ -59,7 +59,7 @@ public class ActiviteController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public ActiviteDTO getActiviteParId(@PathVariable Long id) {
         try {
@@ -100,7 +100,7 @@ public class ActiviteController {
 
 
     @GetMapping("/enCours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public List<ActiviteDTO> listerActiviteEncours() {
         return activiteService.List().stream()
                 .map(activite -> {
@@ -147,14 +147,14 @@ public class ActiviteController {
     }
 
     @GetMapping("/nombre") // Pas de paramètres
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Long> getNombreActivite() {
         long count = activiteRepository.count();
         return ResponseEntity.ok(count); // Retourne le nombre d'utilisateurs
     }
 
     @GetMapping("/nombreActivitesEncours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Long> getNombreActivitesEncours() {
         long count = activiteRepository.countByStatut(Statut.En_Cours); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités
@@ -167,7 +167,7 @@ public class ActiviteController {
     }
 
     @GetMapping("/nombreActivitesTerminer")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Long> getNombreActivitesTerminer() {
         long count = activiteRepository.countByStatut(Statut.Termine); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités

@@ -27,7 +27,7 @@ public class StatsFichierController {
 //---------------------------Recuperer la taille des fichiers----------------//
 //--------------------------------------------------------------------------//
    @GetMapping("/fichiers/par-type")
-   @PreAuthorize("hasAnyRole('PERSONNEL', 'SUPERADMIN')")
+   @PreAuthorize("hasAnyRole('PERSONNEL', 'SUPERADMIN', 'DIRECTEUR')")
 public ResponseEntity<StatsParTypeDTO> getStatsParType() {
     StatsParTypeDTO stats = statsService.calculerStatsParType();
     return ResponseEntity.ok(stats);

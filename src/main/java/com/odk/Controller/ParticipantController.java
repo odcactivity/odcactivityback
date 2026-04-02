@@ -49,20 +49,20 @@ public class ParticipantController {
 
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public List<ParticipantDTO> ListerParticipant(){
         return participantService.listParticipant();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public Optional<Participant> getParticipantParId(@PathVariable Long id){
         return participantService.findById(id);
     }
     @GetMapping("/critere")
-    @PreAuthorize("hasRole('PERSONNEL')or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public List<Participant> getParticipantParCriteres(@RequestParam(required = false) LocalDate dateDebut,@RequestParam(required = false) LocalDate dateFin,@RequestParam(required = false) Long activiteId,@RequestParam(required = false) Long entiteId,@RequestParam(required=false) Long etapeId){
         System.out.println("find by critere======"+dateDebut+"  ,"+dateFin+", "+activiteId+",  "+entiteId);
@@ -82,7 +82,7 @@ public class ParticipantController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public void  supprimer(@PathVariable Long id){
         participantService.delete(id);
@@ -95,7 +95,7 @@ public class ParticipantController {
     }
 
     @GetMapping("/check")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<String> checkParticipant(@RequestParam String email, @RequestParam String phone) {
         boolean isBlacklisted = blackListService.isParticipantBlacklisted(email, phone);
         if (isBlacklisted) {

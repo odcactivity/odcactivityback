@@ -70,7 +70,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
 }
     
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<List<EtapeDTO>> getAllEtapes() {
         List<EtapeDTO> letap=etapeService.getAllEtapes();
@@ -79,7 +79,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
         return ResponseEntity.ok(letap); // Utilise le service pour récupérer les étapes sous forme de DTO
     }
     @GetMapping("/sansactivite")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<List<EtapeDTOSansActivite>> getAllEtapesSansActivite() {
         List<EtapeDTOSansActivite> letap=etapeService.getAllEtapesSansActivite();
@@ -155,7 +155,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
 
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<List<EtapeDTO>> getEtape(@PathVariable Long id) {
         List<EtapeDTO> etapes = etapeService.getByIdEtapes(id);
         return new ResponseEntity<>(etapes, HttpStatus.OK);

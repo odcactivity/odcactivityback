@@ -2,7 +2,6 @@ package com.odk.Entity;
 
 import com.odk.Repository.RoleRepository;
 import com.odk.Repository.UtilisateurRepository;
-import com.odk.securityConfig.BcryptPassword;
 import lombok.AllArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -73,6 +72,28 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Utilisateur Personnel créé avec succès !");
         } else {
             System.out.println("Utilisateur Personnel existe déjà !");
+        }
+
+        Role directeurRole = roleRepository.findByNom("DIRECTEUR")
+                .orElseGet(() -> {
+                    Role r = new Role();
+                    r.setNom("DIRECTEUR");
+                    return roleRepository.save(r);
+                });
+
+        if (utilisateurRepository.findByEmail("directeur@gmail.com").isEmpty()) {
+            Utilisateur directeur = new Utilisateur();
+            directeur.setNom("Directeur");
+            directeur.setPrenom("ODC");
+            directeur.setPhone("00000000");
+            directeur.setGenre("Homme");
+            directeur.setEmail("directeur@gmail.com");
+            directeur.setPassword(passwordEncoder.encode("motdepasse123"));
+            directeur.setRole(directeurRole);
+            utilisateurRepository.save(directeur);
+            System.out.println("Utilisateur DIRECTEUR (directeur@gmail.com) créé avec succès !");
+        } else {
+            System.out.println("Utilisateur DIRECTEUR existe déjà !");
         }
 
     }

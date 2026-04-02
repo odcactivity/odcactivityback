@@ -35,7 +35,7 @@ public class UtilisateurController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.OK)
     public List<UtilisateurDTO> Liste(){
         return utilisateurService.getAllUtilisateur();
@@ -49,7 +49,7 @@ public class UtilisateurController {
     }
 
     @PatchMapping("{id}")
-    @PreAuthorize("hasRole('SUPERADMIN')or hasRole('PERSONNEL')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('PERSONNEL') or hasRole('DIRECTEUR')")
     @ResponseStatus(HttpStatus.CREATED)
     public Utilisateur Modifier(@PathVariable Long id, @RequestBody UtilisateurDTO utilisateur ){
         return utilisateurService.updateDTO(utilisateur,id);
@@ -64,7 +64,7 @@ public class UtilisateurController {
     }
 
     @GetMapping("/nombre") // Pas de paramètres
-    @PreAuthorize("hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Long> getNombreUtilisateurs() {
         long count = utilisateurService.getNombreUtilisateurs();
         return ResponseEntity.ok(count); // Retourne le nombre d'utilisateurs
