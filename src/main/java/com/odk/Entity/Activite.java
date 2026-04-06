@@ -74,6 +74,9 @@ private List<ActiviteValidation> validations = new ArrayList<>();
     }
 
     public void mettreAJourStatut() {
+        if (statut == Statut.En_Validation_Directeur_ODC || statut == Statut.Rejetee) {
+            return;
+        }
         Date maintenant = new Date();
         if (dateDebut != null && dateFin != null) {
             if (maintenant.before(dateDebut)) {

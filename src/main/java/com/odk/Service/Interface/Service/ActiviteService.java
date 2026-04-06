@@ -20,7 +20,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,8 +36,11 @@ import java.util.stream.Collectors;
 
 
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class ActiviteService implements CrudService<Activite, Long> {
+
+    @Value("${app.frontend.base-url:http://localhost:4200}")
+    private String appFrontendBaseUrl;
 
     private ActiviteRepository activiteRepository;
     private PersonnelService personnelService;
@@ -81,12 +85,10 @@ public class ActiviteService implements CrudService<Activite, Long> {
                 throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "La salle est déjà réservée pour une activité en cours ou en attente.");
             }
 
-            // Mettre à jour le statut de l'activité
-            entity.mettreAJourStatut();
-            // Enregistrer l'activité
+            // Toute création par un personnel passe par validation directeur ODC (pas de diffusion aux personnels avant validation)
+            entity.setStatut(Statut.En_Validation_Directeur_ODC);
             Activite activiteCree = activiteRepository.save(entity);
-            //envoi de mail de notification
-            envoiMail(activiteCree);
+            envoiMailDirecteurOdcPourActivite(activiteCree);
 
             return activiteCree;
         } catch (DataAccessException e) {
@@ -166,6 +168,75 @@ public void envoiMail(Activite activiteCree){
                 emailService.sendSimpleEmail(email, sujet, emailBody);
             }
 }
+
+    public void envoiMailDirecteurOdcPourActivite(Activite activiteCree) {
+        List<Utilisateur> directeurs = utilisateurRepository.findByRole_Nom("DIRECTEUR_ODC");
+        if (directeurs == null || directeurs.isEmpty()) {
+            return;
+        }
+        String createur = activiteCree.getCreatedBy() != null
+                ? activiteCree.getCreatedBy().getPrenom() + " " + activiteCree.getCreatedBy().getNom()
+                : "un personnel";
+        String lien = appFrontendBaseUrl + "/authentication/signin";
+        String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(createur)
+                + "</strong> a créé une activité <strong>" + escapeHtml(activiteCree.getNom())
+                + "</strong> en attente de votre validation.</p>"
+                + "<p>Connectez-vous en tant que directeur ODC pour valider ou refuser : "
+                + "<a href=\"" + lien + "\">" + lien + "</a></p>";
+        String sujet = "[ODC Activité] Validation requise : " + activiteCree.getNom();
+        for (Utilisateur d : directeurs) {
+            if (d.getEmail() != null && !d.getEmail().isBlank()) {
+                emailService.sendSimpleEmail(d.getEmail(), sujet,
+                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+            }
+        }
+    }
+
+    private static String escapeHtml(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    @Transactional
+    public Activite validerParDirecteurOdc(Long activiteId) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cette activité n'est pas en attente de validation par le directeur ODC.");
+        }
+        a.setStatut(Statut.En_Attente);
+        a.mettreAJourStatut();
+        Activite saved = activiteRepository.save(a);
+        envoiMail(saved);
+        return saved;
+    }
+
+    @Transactional
+    public Activite rejeterParDirecteurOdc(Long activiteId) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cette activité n'est pas en attente de validation par le directeur ODC.");
+        }
+        a.setStatut(Statut.Rejetee);
+        Activite saved = activiteRepository.save(a);
+        if (saved.getCreatedBy() != null && saved.getCreatedBy().getEmail() != null) {
+            String sujet = "[ODC Activité] Activité non validée : " + saved.getNom();
+            String corps = "<p>Bonjour,</p><p>Votre activité <strong>" + escapeHtml(saved.getNom())
+                    + "</strong> n'a pas été validée par le directeur ODC.</p>";
+            emailService.sendSimpleEmail(saved.getCreatedBy().getEmail(), sujet,
+                    "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+        }
+        return saved;
+    }
+
+    public List<Activite> listerEnAttenteValidationDirecteurOdc() {
+        return activiteRepository.findByStatut(Statut.En_Validation_Directeur_ODC);
+    }
 
     @Override
     public List<Activite> List() {

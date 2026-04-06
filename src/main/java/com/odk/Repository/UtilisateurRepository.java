@@ -19,4 +19,6 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
 
     long count();
 
+    List<Utilisateur> findByRole_Nom(String nom);
+
 }

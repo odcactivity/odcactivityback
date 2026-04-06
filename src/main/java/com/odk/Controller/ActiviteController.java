@@ -2,9 +2,11 @@ package com.odk.Controller;
 
 import com.odk.Entity.Activite;
 import com.odk.Entity.Etape;
+import com.odk.Entity.Utilisateur;
 import com.odk.Enum.Statut;
 import com.odk.Repository.ActiviteRepository;
 import com.odk.Repository.EtapeRepository;
+import com.odk.Repository.UtilisateurRepository;
 import com.odk.Service.Interface.Service.ActiviteService;
 import com.odk.dto.ActiviteDTO;
 import com.odk.dto.ActiviteMapper;
@@ -15,6 +17,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class ActiviteController {
 
     private final ActiviteRepository activiteRepository;
+    private final UtilisateurRepository utilisateurRepository;
     private ActiviteService activiteService;
     private EtapeRepository etapeRepository;
     private final EtapeMapper etapeMapper;
@@ -50,22 +54,63 @@ public class ActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     @ResponseStatus(HttpStatus.OK)
     public List<ActiviteDTO> listerActivite() {
-//        System.out.println("activite dto===="+activiteMapper.listeActivite(activiteService.List()));
-        return activiteMapper.listeActivite(activiteService.List());
+        List<Activite> all = new ArrayList<>(activiteService.List());
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        utilisateurRepository.findByEmail(email).ifPresent(u -> {
+            if (u.getRole() != null && "PERSONNEL".equalsIgnoreCase(u.getRole().getNom())) {
+                all.removeIf(a -> a.getStatut() == Statut.En_Validation_Directeur_ODC
+                        && (a.getCreatedBy() == null || !a.getCreatedBy().getId().equals(u.getId())));
+            }
+        });
+        return activiteMapper.listeActivite(all);
+    }
 
+    @GetMapping("/en-attente-validation-directeur-odc")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public List<ActiviteDTO> listerEnAttenteValidationDirecteurOdc() {
+        return activiteMapper.listeActivite(activiteService.listerEnAttenteValidationDirecteurOdc());
+    }
+
+    @PostMapping("/{id}/valider-directeur-odc")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ActiviteDTO validerDirecteurOdc(@PathVariable Long id) {
+        return activiteMapper.ACTIVITE_DTO(activiteService.validerParDirecteurOdc(id));
+    }
+
+    @PostMapping("/{id}/rejeter-directeur-odc")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ActiviteDTO rejeterDirecteurOdc(@PathVariable Long id) {
+        return activiteMapper.ACTIVITE_DTO(activiteService.rejeterParDirecteurOdc(id));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     @ResponseStatus(HttpStatus.OK)
     public ActiviteDTO getActiviteParId(@PathVariable Long id) {
         try {
-            return activiteMapper.ACTIVITE_DTO(activiteService.findById(id).get());
+            Activite a = activiteService.findById(id).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+            assertPersonnelPeutVoirActiviteEnValidation(a);
+            return activiteMapper.ACTIVITE_DTO(a);
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erreur lors de la récupération de l'activité par ID", e);
+        }
+    }
+
+    private void assertPersonnelPeutVoirActiviteEnValidation(Activite activite) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email).orElse(null);
+        if (u == null || u.getRole() == null || !"PERSONNEL".equalsIgnoreCase(u.getRole().getNom())) {
+            return;
+        }
+        if (activite.getStatut() == Statut.En_Validation_Directeur_ODC
+                && (activite.getCreatedBy() == null || !activite.getCreatedBy().getId().equals(u.getId()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Accès refusé à cette activité.");
         }
     }
 
@@ -100,7 +145,7 @@ public class ActiviteController {
 
 
     @GetMapping("/enCours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public List<ActiviteDTO> listerActiviteEncours() {
         return activiteService.List().stream()
                 .map(activite -> {
@@ -147,27 +192,28 @@ public class ActiviteController {
     }
 
     @GetMapping("/nombre") // Pas de paramètres
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivite() {
         long count = activiteRepository.count();
         return ResponseEntity.ok(count); // Retourne le nombre d'utilisateurs
     }
 
     @GetMapping("/nombreActivitesEncours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEncours() {
         long count = activiteRepository.countByStatut(Statut.En_Cours); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités
     }
 
     @GetMapping("/nombreActivitesEnAttente")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEnAttente() {
         long count = activiteRepository.countByStatut(Statut.En_Attente); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités
     }
 
     @GetMapping("/nombreActivitesTerminer")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesTerminer() {
         long count = activiteRepository.countByStatut(Statut.Termine); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités

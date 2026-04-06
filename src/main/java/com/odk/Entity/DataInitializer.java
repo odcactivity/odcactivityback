@@ -7,6 +7,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 @Component
 @AllArgsConstructor
 public class DataInitializer implements CommandLineRunner {
@@ -81,19 +83,52 @@ public class DataInitializer implements CommandLineRunner {
                     return roleRepository.save(r);
                 });
 
-        if (utilisateurRepository.findByEmail("directeur@gmail.com").isEmpty()) {
+        // Compte DCIRE (directeur)
+        // Migration douce: si l'ancien email existe déjà, on le renomme vers le nouveau.
+        Optional<Utilisateur> oldDirecteur = utilisateurRepository.findByEmail("directeur@gmail.com");
+        if (oldDirecteur.isPresent() && utilisateurRepository.findByEmail("dcire@gmail.com").isEmpty()) {
+            Utilisateur u = oldDirecteur.get();
+            u.setEmail("dcire@gmail.com");
+            u.setRole(directeurRole);
+            utilisateurRepository.save(u);
+            System.out.println("Utilisateur DIRECTEUR renommé de directeur@gmail.com vers dcire@gmail.com !");
+        }
+
+        if (utilisateurRepository.findByEmail("dcire@gmail.com").isEmpty()) {
             Utilisateur directeur = new Utilisateur();
-            directeur.setNom("Directeur");
+            directeur.setNom("DCIRE");
             directeur.setPrenom("ODC");
             directeur.setPhone("00000000");
             directeur.setGenre("Homme");
-            directeur.setEmail("directeur@gmail.com");
+            directeur.setEmail("dcire@gmail.com");
             directeur.setPassword(passwordEncoder.encode("motdepasse123"));
             directeur.setRole(directeurRole);
             utilisateurRepository.save(directeur);
-            System.out.println("Utilisateur DIRECTEUR (directeur@gmail.com) créé avec succès !");
+            System.out.println("Utilisateur DIRECTEUR (dcire@gmail.com) créé avec succès !");
         } else {
             System.out.println("Utilisateur DIRECTEUR existe déjà !");
+        }
+
+        Role directeurOdcRole = roleRepository.findByNom("DIRECTEUR_ODC")
+                .orElseGet(() -> {
+                    Role r = new Role();
+                    r.setNom("DIRECTEUR_ODC");
+                    return roleRepository.save(r);
+                });
+
+        if (utilisateurRepository.findByEmail("directeurODC@gmail.com").isEmpty()) {
+            Utilisateur dirOdc = new Utilisateur();
+            dirOdc.setNom("Directeur");
+            dirOdc.setPrenom("ODC");
+            dirOdc.setPhone("00000000");
+            dirOdc.setGenre("Homme");
+            dirOdc.setEmail("directeurODC@gmail.com");
+            dirOdc.setPassword(passwordEncoder.encode("DirOT2026"));
+            dirOdc.setRole(directeurOdcRole);
+            utilisateurRepository.save(dirOdc);
+            System.out.println("Utilisateur DIRECTEUR_ODC (directeurODC@gmail.com) créé avec succès !");
+        } else {
+            System.out.println("Utilisateur DIRECTEUR_ODC existe déjà !");
         }
 
     }

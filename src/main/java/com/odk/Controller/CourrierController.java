@@ -6,9 +6,8 @@ import java.util.List;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -51,6 +50,7 @@ public class CourrierController {
      *  PARTIE 1 : RÉCEPTION / ENREGISTREMENT DU COURRIER
      * ====================================================== */
     @PostMapping("/reception")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Courrier> receptionCourrier(
             @RequestParam String numero,
             @RequestParam String objet,
@@ -73,7 +73,119 @@ public class CourrierController {
     /* ======================================================
      *  PARTIE 2 : IMPUTATION PAR LE DIRECTEUR
      * ====================================================== */
+    @PostMapping("/odc/brouillon")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<Courrier> brouillonOdc(
+            @RequestParam Long odcDirectionId,
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam String expediteur,
+            @RequestParam(required = false) MultipartFile fichier
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur);
+        dto.setDirectionId(odcDirectionId);
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(courrierService.creerBrouillonOdc(odcDirectionId, dto));
+    }
+
+    @PostMapping("/odc/{id}/valider-transmission-dcire")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> validerTransmissionDcire(@PathVariable Long id) {
+        return ResponseEntity.ok(courrierService.validerTransmissionVersDcire(id));
+    }
+
+    @PostMapping("/odc/{id}/resoumettre-revision")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<Courrier> resoumettreRevision(@PathVariable Long id) {
+        return ResponseEntity.ok(courrierService.resoumettreApresRevisionAdmin(id));
+    }
+
+    @GetMapping("/odc-directeur/en-cours-validation")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<List<Courrier>> listerCourriersValidationDirecteurOdc() {
+        return ResponseEntity.ok(courrierService.listerPourValidationDirecteurOdc());
+    }
+
+    @PostMapping("/odc-directeur/{id}/suggestion")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> suggestionDirecteurOdc(
+            @PathVariable Long id,
+            @RequestParam String texte) {
+        return ResponseEntity.ok(courrierService.enregistrerSuggestionDirecteurOdc(id, texte));
+    }
+
+    @PostMapping("/odc-directeur/{id}/annuler")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> annulerCourrierDirecteurOdc(@PathVariable Long id) {
+        return ResponseEntity.ok(courrierService.annulerCourrierParDirecteurOdc(id));
+    }
+
+    @PostMapping("/division-interne")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> courrierInterneDivision(
+            @RequestParam Long origineDirectionId,
+            @RequestParam Long cibleDirectionId,
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam String expediteur,
+            @RequestParam(required = false) MultipartFile fichier
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur);
+        dto.setDirectionId(cibleDirectionId);
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(courrierService.enregistrerCourrierInterneDivision(origineDirectionId, cibleDirectionId, dto));
+    }
+
+    @GetMapping("/odc/{directionId}")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<List<Courrier>> listerPourOdc(
+            @PathVariable Long directionId,
+            @RequestParam(defaultValue = "OPERATIONNEL") String vue
+    ) {
+        return ResponseEntity.ok(courrierService.listerPourOdc(directionId, vue));
+    }
+
+    @GetMapping("/dcire")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<List<Courrier>> listerPourDcire() {
+        return ResponseEntity.ok(courrierService.listerPourDcire());
+    }
+
+    @PostMapping("/dcire/reception-externe")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> receptionExterneDcire(
+            @RequestParam Long structureOrigineId,
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam String expediteur,
+            @RequestParam(required = false) MultipartFile fichier
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur);
+        dto.setDirectionId(structureOrigineId);
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(courrierService.receptionExterneDepuisStructure(structureOrigineId, dto));
+    }
+
+    @PostMapping("/dcire/{id}/transmettre-odc")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> transmettreVersOdc(
+            @PathVariable Long id,
+            @RequestParam Long odcDirectionId
+    ) {
+        return ResponseEntity.ok(courrierService.transmettreVersOdc(id, odcDirectionId));
+    }
+
     @PutMapping("/{id}/imputer")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
     public ResponseEntity<Courrier> imputerCourrier(
             @PathVariable Long id,
             @RequestParam Long entiteCibleId,

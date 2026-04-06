@@ -25,14 +25,14 @@ public class BlackListController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     @ResponseStatus(HttpStatus.OK)
     public List<BlackList> lister() {
         return blackListService.List();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<BlackList> getCritereParId(@PathVariable Long id) {
         return blackListService.findById(id)
                 .map(ResponseEntity::ok)
@@ -40,14 +40,14 @@ public class BlackListController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<BlackList> modifier(@PathVariable Long id, @RequestBody BlackList blackList) {
         BlackList updatedBlacklist = blackListService.update(blackList, id);
         return updatedBlacklist != null ? ResponseEntity.ok(updatedBlacklist) : ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     @ResponseStatus(HttpStatus.OK)
     public void supprimer(@PathVariable Long id) {
         blackListService.delete(id);

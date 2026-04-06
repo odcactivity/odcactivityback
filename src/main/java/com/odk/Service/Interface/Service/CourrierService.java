@@ -6,16 +6,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 
 import com.odk.Enum.TypeEntite;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,10 +35,14 @@ import com.odk.validation.FileValidationUtil;
 import com.odk.exception.CourrierValidationException;
 import com.odk.exception.FileValidationException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 @RequiredArgsConstructor
 public class CourrierService {
+
+    @Value("${app.frontend.base-url:http://localhost:4200}")
+    private String appFrontendBaseUrl;
 
     private final CourrierRepository courrierRepository;
     private final EntiteOdcRepository entiteRepository;
@@ -79,6 +84,7 @@ public class CourrierService {
         courrier.setExpediteur(dto.getExpediteur());
         courrier.setEntite(direction);
         courrier.setDirectionInitial(direction);
+        courrier.setStructureOrigine(direction);
         courrier.setFichier(cheminFichier);
         courrier.setStatut(StatutCourrier.ENVOYER);
         courrier.setDateReception(new Date());
@@ -343,11 +349,436 @@ public class CourrierService {
     }
 
     /**
-     * Récupère les courriers par statut et entité
+     * Récupère les courriers par statut et entité (détenteur courant = entité).
      */
-    public List<Courrier> getCourriersByStatutAndEntite(StatutCourrier statut, Long directionInitial) {
-        Optional<Entite> entite=entiteRepository.findById(directionInitial);
-        return courrierRepository.findByDirectionInitial(entite.get());
-                //findByEntiteIdAndStatut(entiteId, statut);
+    public List<Courrier> getCourriersByStatutAndEntite(StatutCourrier statut, Long entiteId) {
+        entiteRepository.findById(entiteId)
+                .orElseThrow(() -> new RuntimeException("Entité introuvable"));
+        return courrierRepository.findByEntiteIdAndStatut(entiteId, statut);
+    }
+
+    public List<Courrier> listerPourDcire() {
+        return courrierRepository.findAllOrderByDateReceptionDesc();
+    }
+
+    public List<Courrier> listerPourOdc(Long directionId, String vue) {
+        entiteRepository.findById(directionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable"));
+        if ("VALIDATION".equalsIgnoreCase(vue)) {
+            return courrierRepository.findEnAttenteValidationOdc(directionId, List.of(
+                    StatutCourrier.ATTENTE_VALIDATION_ODC,
+                    StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC,
+                    StatutCourrier.EN_REVISION_ADMIN_COURRIER));
+        }
+        if ("ARCHIVES".equalsIgnoreCase(vue)) {
+            return courrierRepository.findVisiblePourDirectionOdc(directionId, List.of(StatutCourrier.ARCHIVER));
+        }
+        if ("REPONDUS".equalsIgnoreCase(vue)) {
+            return courrierRepository.findVisiblePourDirectionOdc(directionId, List.of(StatutCourrier.REPONDU));
+        }
+        return courrierRepository.findVisiblePourDirectionOdc(directionId, List.of(
+                StatutCourrier.ENVOYER,
+                StatutCourrier.IMPUTER,
+                StatutCourrier.EN_COURS,
+                StatutCourrier.TRANSMIS_DCIRE,
+                StatutCourrier.EN_REVISION_ADMIN_COURRIER));
+    }
+
+    public Courrier creerBrouillonOdc(Long odcDirectionId, CourrierDTO dto) throws IOException {
+        Entite odcDir = entiteRepository.findById(odcDirectionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable"));
+        if (odcDir.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("L'identifiant doit correspondre à une direction.");
+        }
+        if (nomIndiqueDcire(odcDir)) {
+            throw new CourrierValidationException("Pour un envoi depuis l'ODC, choisissez une direction ODC, pas la DCIRE.");
+        }
+        if (!estDirectionOdc(odcDir)) {
+            throw new CourrierValidationException("La direction sélectionnée n'est pas reconnue comme périmètre ODC.");
+        }
+
+        CourrierValidator.ValidationResult validation = CourrierValidator.validateCourrierData(dto, dto.getFichier());
+        if (!validation.isValid()) {
+            throw new CourrierValidationException(validation.getErrorMessage());
+        }
+        String cheminFichier;
+        try {
+            cheminFichier = sauvegarderFichierSecurise(dto.getFichier());
+        } catch (FileValidationException e) {
+            throw new CourrierValidationException("Erreur de validation du fichier : " + e.getMessage(), e);
+        } catch (IOException e) {
+            throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
+        }
+
+        Courrier courrier = new Courrier();
+        courrier.setNumero(dto.getNumero());
+        courrier.setObjet(dto.getObjet());
+        courrier.setExpediteur(dto.getExpediteur());
+        courrier.setStructureOrigine(odcDir);
+        courrier.setDirectionInitial(odcDir);
+        courrier.setEntite(odcDir);
+        courrier.setFichier(cheminFichier);
+        courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        courrier.setDateReception(new Date());
+        courrier.setDateLimite(new Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000));
+        courrier.setDateRelance(new Date(System.currentTimeMillis() + 2L * 24 * 60 * 60 * 1000));
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(odcDir);
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        historique.setCommentaire("Courrier créé par l'admin — validation du directeur ODC avant envoi à la DCIRE");
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(null);
+        historique.setNouvelleEntite(odcDir);
+        historiqueRepository.save(historique);
+
+        notifierDirecteursOdcNouveauCourrier(courrier);
+        return courrier;
+    }
+
+    public List<Courrier> listerPourValidationDirecteurOdc() {
+        return courrierRepository.findByStatutInOrderByDateReceptionDesc(Arrays.asList(
+                StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC,
+                StatutCourrier.EN_REVISION_ADMIN_COURRIER,
+                StatutCourrier.ATTENTE_VALIDATION_ODC));
+    }
+
+    public Courrier enregistrerSuggestionDirecteurOdc(Long courrierId, String suggestion) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC
+                && courrier.getStatut() != StatutCourrier.ATTENTE_VALIDATION_ODC) {
+            throw new CourrierValidationException("Ce courrier n'est pas en attente de votre relecture.");
+        }
+        courrier.setSuggestionDirecteur(suggestion != null ? suggestion : "");
+        courrier.setStatut(StatutCourrier.EN_REVISION_ADMIN_COURRIER);
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(courrier.getEntite());
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.EN_REVISION_ADMIN_COURRIER);
+        historique.setCommentaire("Suggestions directeur ODC : " + (suggestion != null ? suggestion : ""));
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(courrier.getEntite());
+        historique.setNouvelleEntite(courrier.getEntite());
+        historiqueRepository.save(historique);
+
+        notifierSuperAdminsRevisionCourrier(courrier);
+        return courrier;
+    }
+
+    public Courrier resoumettreApresRevisionAdmin(Long courrierId) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.EN_REVISION_ADMIN_COURRIER) {
+            throw new CourrierValidationException("Ce courrier n'est pas en révision côté admin.");
+        }
+        courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(courrier.getEntite());
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        historique.setCommentaire("Courrier resoumis par l'admin après prise en compte des suggestions");
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(courrier.getEntite());
+        historique.setNouvelleEntite(courrier.getEntite());
+        historiqueRepository.save(historique);
+
+        notifierDirecteursOdcNouveauCourrier(courrier);
+        return courrier;
+    }
+
+    public Courrier annulerCourrierParDirecteurOdc(Long courrierId) {
+        Courrier courrier = getCourrier(courrierId);
+        StatutCourrier st = courrier.getStatut();
+        if (st != StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC
+                && st != StatutCourrier.EN_REVISION_ADMIN_COURRIER
+                && st != StatutCourrier.ATTENTE_VALIDATION_ODC) {
+            throw new CourrierValidationException("Ce courrier ne peut pas être annulé depuis cet écran.");
+        }
+        courrier.setStatut(StatutCourrier.ARCHIVER);
+        courrier.setDateArchivage(new Date());
+        courrierRepository.save(courrier);
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(courrier.getEntite());
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ARCHIVER);
+        historique.setCommentaire("Annulé / archivé par le directeur ODC");
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(courrier.getEntite());
+        historique.setNouvelleEntite(courrier.getEntite());
+        historiqueRepository.save(historique);
+        return courrier;
+    }
+
+    public Courrier validerTransmissionVersDcire(Long courrierId) {
+        Courrier courrier = getCourrier(courrierId);
+        StatutCourrier st = courrier.getStatut();
+        if (st != StatutCourrier.ATTENTE_VALIDATION_ODC && st != StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC) {
+            throw new CourrierValidationException("Ce courrier n'est pas en attente de validation avant envoi à la DCIRE.");
+        }
+        Entite dcire = resolveDcireDirection();
+        Entite ancienne = courrier.getEntite();
+        courrier.setEntite(dcire);
+        courrier.setStatut(StatutCourrier.TRANSMIS_DCIRE);
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(dcire);
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.TRANSMIS_DCIRE);
+        historique.setCommentaire("Validé côté ODC — transmission à la DCIRE");
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(ancienne);
+        historique.setNouvelleEntite(dcire);
+        historiqueRepository.save(historique);
+
+        return courrier;
+    }
+
+    public Courrier receptionExterneDepuisStructure(Long structureOrigineId, CourrierDTO dto) throws IOException {
+        Entite origine = entiteRepository.findById(structureOrigineId)
+                .orElseThrow(() -> new CourrierValidationException("Structure d'origine introuvable"));
+        if (origine.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("La structure d'origine doit être une direction.");
+        }
+        if (nomIndiqueDcire(origine)) {
+            throw new CourrierValidationException("La DCIRE ne peut pas être expéditeur sur cette entrée.");
+        }
+        if (estDirectionOdc(origine)) {
+            throw new CourrierValidationException(
+                    "Les courriers émis par l'ODC passent par le circuit interne (brouillon + validation), pas par la réception DCIRE.");
+        }
+
+        CourrierValidator.ValidationResult validation = CourrierValidator.validateCourrierData(dto, dto.getFichier());
+        if (!validation.isValid()) {
+            throw new CourrierValidationException(validation.getErrorMessage());
+        }
+        String cheminFichier;
+        try {
+            cheminFichier = sauvegarderFichierSecurise(dto.getFichier());
+        } catch (FileValidationException e) {
+            throw new CourrierValidationException("Erreur de validation du fichier : " + e.getMessage(), e);
+        } catch (IOException e) {
+            throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
+        }
+
+        Entite dcire = resolveDcireDirection();
+        Courrier courrier = new Courrier();
+        courrier.setNumero(dto.getNumero());
+        courrier.setObjet(dto.getObjet());
+        courrier.setExpediteur(dto.getExpediteur());
+        courrier.setStructureOrigine(origine);
+        courrier.setDirectionInitial(dcire);
+        courrier.setEntite(dcire);
+        courrier.setFichier(cheminFichier);
+        courrier.setStatut(StatutCourrier.ENVOYER);
+        courrier.setDateReception(new Date());
+        courrier.setDateLimite(new Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000));
+        courrier.setDateRelance(new Date(System.currentTimeMillis() + 2L * 24 * 60 * 60 * 1000));
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(dcire);
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ENVOYER);
+        historique.setCommentaire("Réception à la DCIRE — origine : " + origine.getNom());
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(null);
+        historique.setNouvelleEntite(dcire);
+        historiqueRepository.save(historique);
+
+        return courrier;
+    }
+
+    public Courrier transmettreVersOdc(Long courrierId, Long odcDirectionId) {
+        Courrier courrier = getCourrier(courrierId);
+        Entite dcire = resolveDcireDirection();
+        if (courrier.getEntite() == null || !Objects.equals(dcire.getId(), courrier.getEntite().getId())) {
+            throw new CourrierValidationException("Le courrier doit être présent sur la direction DCIRE pour être transmis à l'ODC.");
+        }
+        Entite odc = entiteRepository.findById(odcDirectionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable"));
+        if (odc.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("La cible doit être une direction ODC.");
+        }
+        if (nomIndiqueDcire(odc) || !estDirectionOdc(odc)) {
+            throw new CourrierValidationException("Sélectionnez une direction du périmètre ODC.");
+        }
+
+        Entite ancienne = courrier.getEntite();
+        courrier.setEntite(odc);
+        courrier.setUtilisateurAffecte(null);
+        courrier.setStatut(StatutCourrier.ENVOYER);
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(odc);
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ENVOYER);
+        historique.setCommentaire("Transmis par la DCIRE vers l'ODC : " + odc.getNom());
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(ancienne);
+        historique.setNouvelleEntite(odc);
+        historiqueRepository.save(historique);
+
+        return courrier;
+    }
+
+    private Entite resolveDcireDirection() {
+        return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(this::nomIndiqueDcire)
+                .findFirst()
+                .orElseThrow(() -> new CourrierValidationException(
+                        "Aucune direction DCIRE trouvée : créez une direction dont le nom contient « DCIRE »."));
+    }
+
+    private boolean nomIndiqueDcire(Entite e) {
+        return normalizeNomEntite(e.getNom()).contains("DCIRE");
+    }
+
+    private String normalizeNomEntite(String nom) {
+        if (nom == null) {
+            return "";
+        }
+        return nom.toUpperCase().replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Périmètre ODC (piliers / ODC), aligné avec le filtrage métier côté front.
+     */
+    private boolean estDirectionOdc(Entite e) {
+        String n = normalizeNomEntite(e.getNom());
+        return n.contains("ORANGE DIGITAL KALANSO")
+                || n.contains("ODK")
+                || n.contains("ORANGE DIGITAL MULTIMEDIA")
+                || n.contains("MULTIMEDIA")
+                || n.contains("ORANGE FABLAB")
+                || n.contains("FABLAB")
+                || n.contains("ORANGE FAB")
+                || n.contains("ODC");
+    }
+
+    /**
+     * ODC (piliers), Fondation, RSE, DCI — sans passage obligatoire par l’entité DCIRE pour les échanges entre eux.
+     */
+    public boolean estMembreDivisionDcire(Entite e) {
+        if (e == null || nomIndiqueDcire(e)) {
+            return false;
+        }
+        String n = normalizeNomEntite(e.getNom());
+        boolean dciHorsDcire = n.contains("DCI") && !n.contains("DCIRE");
+        return estDirectionOdc(e) || n.contains("FONDATION") || n.contains("RSE") || dciHorsDcire;
+    }
+
+    /**
+     * Courrier direct d’une direction de la division vers une autre (sans hub DCIRE).
+     */
+    public Courrier enregistrerCourrierInterneDivision(Long origineDirectionId, Long cibleDirectionId, CourrierDTO dto)
+            throws IOException {
+        Entite origine = entiteRepository.findById(origineDirectionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction d'origine introuvable"));
+        Entite cible = entiteRepository.findById(cibleDirectionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction cible introuvable"));
+        if (origine.getType() != TypeEntite.DIRECTION || cible.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("L'origine et la cible doivent être des directions.");
+        }
+        if (!estMembreDivisionDcire(origine) || !estMembreDivisionDcire(cible)) {
+            throw new CourrierValidationException(
+                    "Échange interne réservé aux structures ODC / Fondation / RSE / DCI. Hors de ce périmètre, passez par la DCIRE.");
+        }
+
+        CourrierValidator.ValidationResult validation = CourrierValidator.validateCourrierData(dto, dto.getFichier());
+        if (!validation.isValid()) {
+            throw new CourrierValidationException(validation.getErrorMessage());
+        }
+        String cheminFichier;
+        try {
+            cheminFichier = sauvegarderFichierSecurise(dto.getFichier());
+        } catch (FileValidationException e) {
+            throw new CourrierValidationException("Erreur de validation du fichier : " + e.getMessage(), e);
+        } catch (IOException e) {
+            throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
+        }
+
+        Courrier courrier = new Courrier();
+        courrier.setNumero(dto.getNumero());
+        courrier.setObjet(dto.getObjet());
+        courrier.setExpediteur(dto.getExpediteur());
+        courrier.setStructureOrigine(origine);
+        courrier.setDirectionInitial(cible);
+        courrier.setEntite(cible);
+        courrier.setFichier(cheminFichier);
+        courrier.setStatut(StatutCourrier.ENVOYER);
+        courrier.setDateReception(new Date());
+        courrier.setDateLimite(new Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000));
+        courrier.setDateRelance(new Date(System.currentTimeMillis() + 2L * 24 * 60 * 60 * 1000));
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(cible);
+        historique.setUtilisateur(null);
+        historique.setStatut(StatutCourrier.ENVOYER);
+        historique.setCommentaire("Réception interne division — de : " + origine.getNom());
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(null);
+        historique.setNouvelleEntite(cible);
+        historiqueRepository.save(historique);
+
+        return courrier;
+    }
+
+    private void notifierDirecteursOdcNouveauCourrier(Courrier courrier) {
+        List<Utilisateur> directeurs = utilisateurRepository.findByRole_Nom("DIRECTEUR_ODC");
+        if (directeurs == null || directeurs.isEmpty()) {
+            return;
+        }
+        String lien = appFrontendBaseUrl + "/authentication/signin";
+        String sujet = "[ODC Courrier] Validation requise : " + courrier.getNumero();
+        String corps = "<p>Un courrier a été créé. Connectez-vous en directeur ODC pour valider ou demander des corrections.</p>"
+                + "<p><strong>Objet :</strong> " + escapeHtmlCourrier(courrier.getObjet()) + "</p>"
+                + "<p><a href=\"" + lien + "\">Ouvrir l'application</a></p>";
+        String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
+        for (Utilisateur d : directeurs) {
+            if (d.getEmail() != null && !d.getEmail().isBlank()) {
+                emailService.sendSimpleEmail(d.getEmail(), sujet, html);
+            }
+        }
+    }
+
+    private void notifierSuperAdminsRevisionCourrier(Courrier courrier) {
+        List<Utilisateur> admins = new ArrayList<>(utilisateurRepository.findByRole_Nom("SUPERADMIN"));
+        if (admins.isEmpty()) {
+            return;
+        }
+        String lien = appFrontendBaseUrl + "/courrier";
+        String sujet = "[ODC Courrier] Révision demandée : " + courrier.getNumero();
+        String corps = "<p>Le directeur ODC a demandé des corrections sur un courrier.</p>"
+                + "<p><strong>Suggestions :</strong> " + escapeHtmlCourrier(courrier.getSuggestionDirecteur()) + "</p>"
+                + "<p><a href=\"" + lien + "\">Espace courriers</a></p>";
+        String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
+        for (Utilisateur a : admins) {
+            if (a.getEmail() != null && !a.getEmail().isBlank()) {
+                emailService.sendSimpleEmail(a.getEmail(), sujet, html);
+            }
+        }
+    }
+
+    private static String escapeHtmlCourrier(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 }

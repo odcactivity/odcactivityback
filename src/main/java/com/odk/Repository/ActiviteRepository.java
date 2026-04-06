@@ -84,4 +84,16 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
             @Param("start") Date start,
             @Param("end") Date end
     );
+
+    List<Activite> findByStatut(Statut statut);
+
+    @Query("SELECT a FROM Activite a WHERE (:entiteId IS NULL OR a.entite.id = :entiteId) "
+            + "AND (:activiteId IS NULL OR a.id = :activiteId) "
+            + "AND a.dateDebut >= :debut AND a.dateDebut < :fin")
+    List<Activite> findPourRapportGlobal(
+            @Param("entiteId") Long entiteId,
+            @Param("activiteId") Long activiteId,
+            @Param("debut") Date debut,
+            @Param("fin") Date fin
+    );
 }

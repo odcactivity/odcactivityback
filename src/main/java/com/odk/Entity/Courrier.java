@@ -68,6 +68,18 @@ public class Courrier {
     @JoinColumn(name="direction_initial_id")
     private Entite directionInitial;
 
+    /**
+     * Structure métier à l'origine du dossier (ex. une direction ODC, la Fondation, le RSE…).
+     * Complète {@link #directionInitial} pour le périmètre de visibilité ODC / DCIRE.
+     */
+    @ManyToOne
+    @JoinColumn(name = "structure_origine_id")
+    private Entite structureOrigine;
+
+    /** Dernières remarques / suggestions du directeur ODC (révision contenu) */
+    @jakarta.persistence.Column(columnDefinition = "TEXT")
+    private String suggestionDirecteur;
+
 
     /**---------------------------------------------------
      * Champs pour le scheduler : les rappels et alertes ...
