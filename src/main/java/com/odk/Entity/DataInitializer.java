@@ -116,6 +116,7 @@ public class DataInitializer implements CommandLineRunner {
                     return roleRepository.save(r);
                 });
 
+        // Compte métier : notifications nouveaux courriers / activités côté directeur ODC (rôle DIRECTEUR_ODC).
         if (utilisateurRepository.findByEmail("directeurODC@gmail.com").isEmpty()) {
             Utilisateur dirOdc = new Utilisateur();
             dirOdc.setNom("Directeur");

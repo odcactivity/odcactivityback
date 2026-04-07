@@ -35,23 +35,25 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
     @Query("SELECT a FROM Activite a " +
             "WHERE a.salleId.id = :salleId " +
             "AND ((:dateDebut < a.dateFin AND :dateFin > a.dateDebut)) " +
-            "AND a.statut <> :statutTermine")
+            "AND a.statut <> :statutTermine AND a.statut <> :statutRejetee")
     List<Activite> findConflictingActivites(
             @Param("salleId") Long salleId,
             @Param("dateDebut") Date dateDebut,
             @Param("dateFin") Date dateFin,
-            @Param("statutTermine") Statut statutTermine
+            @Param("statutTermine") Statut statutTermine,
+            @Param("statutRejetee") Statut statutRejetee
     );
 
     @Query("SELECT a FROM Activite a " +
             "WHERE LOWER(a.nom) = LOWER(:nom) " +
             "AND ((:dateDebut < a.dateFin AND :dateFin > a.dateDebut)) " +
-            "AND a.statut <> :statutTermine")
+            "AND a.statut <> :statutTermine AND a.statut <> :statutRejetee")
     List<Activite> findConflictingNomActivites(
             @Param("nom") String nom,
             @Param("dateDebut") Date dateDebut,
             @Param("dateFin") Date dateFin,
-            @Param("statutTermine") Statut statutTermine
+            @Param("statutTermine") Statut statutTermine,
+            @Param("statutRejetee") Statut statutRejetee
     );
 
     // --- Méthodes pour validation et supervision ---

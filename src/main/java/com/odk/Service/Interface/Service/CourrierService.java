@@ -9,7 +9,9 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import com.odk.Enum.TypeEntite;
@@ -35,11 +37,15 @@ import com.odk.validation.FileValidationUtil;
 import com.odk.exception.CourrierValidationException;
 import com.odk.exception.FileValidationException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
 @Service
 @RequiredArgsConstructor
 public class CourrierService {
+
+    private static final Logger log = LoggerFactory.getLogger(CourrierService.class);
 
     @Value("${app.frontend.base-url:http://localhost:4200}")
     private String appFrontendBaseUrl;
@@ -429,7 +435,7 @@ public class CourrierService {
         historique.setEntite(odcDir);
         historique.setUtilisateur(null);
         historique.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
-        historique.setCommentaire("Courrier créé par l'admin — validation du directeur ODC avant envoi à la DCIRE");
+        historique.setCommentaire("Courrier créé par l'admin — en attente de validation du directeur ODC");
         historique.setDateAction(new Date());
         historique.setAncienneEntite(null);
         historique.setNouvelleEntite(odcDir);
@@ -666,6 +672,8 @@ public class CourrierService {
                 || n.contains("ORANGE FABLAB")
                 || n.contains("FABLAB")
                 || n.contains("ORANGE FAB")
+                || n.contains("ORANGE DIGITAL CENTER")
+                || n.contains("DIGITAL CENTER")
                 || n.contains("ODC");
     }
 
@@ -744,35 +752,59 @@ public class CourrierService {
         if (directeurs == null || directeurs.isEmpty()) {
             return;
         }
-        String lien = appFrontendBaseUrl + "/authentication/signin";
-        String sujet = "[ODC Courrier] Validation requise : " + courrier.getNumero();
-        String corps = "<p>Un courrier a été créé. Connectez-vous en directeur ODC pour valider ou demander des corrections.</p>"
+        String lien = lienFrontendHash("directeur-odc/validation-courriers");
+        String sujet = "[ODC Courrier] À valider : " + courrier.getNumero();
+        String corps = "<p>Un nouveau courrier attend votre validation ou votre annulation.</p>"
                 + "<p><strong>Objet :</strong> " + escapeHtmlCourrier(courrier.getObjet()) + "</p>"
-                + "<p><a href=\"" + lien + "\">Ouvrir l'application</a></p>";
+                + "<p><a href=\"" + lien + "\">Accéder à votre espace</a></p>";
         String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
         for (Utilisateur d : directeurs) {
             if (d.getEmail() != null && !d.getEmail().isBlank()) {
-                emailService.sendSimpleEmail(d.getEmail(), sujet, html);
+                try {
+                    emailService.sendSimpleEmail(d.getEmail(), sujet, html);
+                } catch (RuntimeException ex) {
+                    log.warn("E-mail directeur ODC non envoyé (courrier id={}) : {}", courrier.getId(), ex.getMessage());
+                }
             }
         }
     }
 
     private void notifierSuperAdminsRevisionCourrier(Courrier courrier) {
-        List<Utilisateur> admins = new ArrayList<>(utilisateurRepository.findByRole_Nom("SUPERADMIN"));
-        if (admins.isEmpty()) {
+        Map<Long, Utilisateur> parId = new LinkedHashMap<>();
+        for (Utilisateur u : utilisateurRepository.findByRole_Nom("SUPERADMIN")) {
+            if (u != null && u.getId() != null) {
+                parId.put(u.getId(), u);
+            }
+        }
+        for (Utilisateur u : utilisateurRepository.findByRole_Nom("ADMIN")) {
+            if (u != null && u.getId() != null) {
+                parId.putIfAbsent(u.getId(), u);
+            }
+        }
+        if (parId.isEmpty()) {
             return;
         }
-        String lien = appFrontendBaseUrl + "/courrier";
-        String sujet = "[ODC Courrier] Révision demandée : " + courrier.getNumero();
-        String corps = "<p>Le directeur ODC a demandé des corrections sur un courrier.</p>"
+        String lien = lienFrontendHash("courrier");
+        String sujet = "[ODC Courrier] Corrections demandées : " + courrier.getNumero();
+        String corps = "<p>Le directeur ODC a laissé des suggestions sur un courrier.</p>"
                 + "<p><strong>Suggestions :</strong> " + escapeHtmlCourrier(courrier.getSuggestionDirecteur()) + "</p>"
-                + "<p><a href=\"" + lien + "\">Espace courriers</a></p>";
+                + "<p><a href=\"" + lien + "\">Ouvrir la gestion des courriers</a></p>";
         String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
-        for (Utilisateur a : admins) {
+        for (Utilisateur a : parId.values()) {
             if (a.getEmail() != null && !a.getEmail().isBlank()) {
                 emailService.sendSimpleEmail(a.getEmail(), sujet, html);
             }
         }
+    }
+
+    /** Lien vers une route Angular en mode hash (#/). */
+    private String lienFrontendHash(String cheminSansSlashInitial) {
+        String base = appFrontendBaseUrl != null ? appFrontendBaseUrl.trim() : "";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        String path = cheminSansSlashInitial == null ? "" : cheminSansSlashInitial.replaceFirst("^/+", "");
+        return base + "/#/" + path;
     }
 
     private static String escapeHtmlCourrier(String s) {

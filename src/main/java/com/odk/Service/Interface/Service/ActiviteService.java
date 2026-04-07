@@ -21,6 +21,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -39,16 +41,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ActiviteService implements CrudService<Activite, Long> {
 
+    private static final Logger log = LoggerFactory.getLogger(ActiviteService.class);
+
     @Value("${app.frontend.base-url:http://localhost:4200}")
     private String appFrontendBaseUrl;
 
-    private ActiviteRepository activiteRepository;
-    private PersonnelService personnelService;
-    private EmailService emailService;
-    private UtilisateurService utilisateurService;
-    private UtilisateurRepository utilisateurRepository;
-    private SalleRepository salleRepository;
-    private EtapeRepository etapeRepository;
+    @Value("${app.frontend.directeur-validation-activites-path:/directeur-odc/validation-activites}")
+    private String directeurValidationActivitesPath;
+
+    private final ActiviteRepository activiteRepository;
+    private final PersonnelService personnelService;
+    private final EmailService emailService;
+    private final UtilisateurService utilisateurService;
+    private final UtilisateurRepository utilisateurRepository;
+    private final SalleRepository salleRepository;
+    private final EtapeRepository etapeRepository;
     private final ActiviteMapper activiteMapper;
     private final EtapeMapper etapeMapper;
      
@@ -64,10 +71,21 @@ public class ActiviteService implements CrudService<Activite, Long> {
 
             // Associer l'utilisateur comme créateur
             entity.setCreatedBy(utilisateurPerso);
+
+            if (entity.getSalleId() == null || entity.getSalleId().getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Salle requise.");
+            }
+            if (entity.getEntite() == null || entity.getEntite().getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Entité requise.");
+            }
+            if (entity.getTypeActivite() == null || entity.getTypeActivite().getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Type d'activité requis.");
+            }
             
              List<Activite> nomconflits = activiteRepository.findConflictingNomActivites(entity.getNom(),entity.getDateDebut(),
                     entity.getDateFin(),
-                    Statut.Termine // Passer l'énumération Statut.Termine
+                    Statut.Termine,
+                    Statut.Rejetee
             );
 
             if (!nomconflits.isEmpty()) {
@@ -78,7 +96,8 @@ public class ActiviteService implements CrudService<Activite, Long> {
                     entity.getSalleId().getId(),
                     entity.getDateDebut(),
                     entity.getDateFin(),
-                    Statut.Termine // Passer l'énumération Statut.Termine
+                    Statut.Termine,
+                    Statut.Rejetee
             );
 
             if (!conflits.isEmpty()) {
@@ -88,16 +107,23 @@ public class ActiviteService implements CrudService<Activite, Long> {
             // Toute création par un personnel passe par validation directeur ODC (pas de diffusion aux personnels avant validation)
             entity.setStatut(Statut.En_Validation_Directeur_ODC);
             Activite activiteCree = activiteRepository.save(entity);
-            envoiMailDirecteurOdcPourActivite(activiteCree);
+            try {
+                envoiMailDirecteurOdcPourActivite(activiteCree);
+            } catch (RuntimeException mailEx) {
+                log.warn("Notification e-mail directeur ODC ignorée (activité id={}) : {}",
+                        activiteCree.getId(), mailEx.getMessage());
+            }
 
             return activiteCree;
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (DataAccessException e) {
-            e.printStackTrace(); // Pour afficher l'exception complète
-            throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "Le nom de cette activité est déjà crée avec les memes dates.", e);
+            e.printStackTrace();
+            throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "Donnée refusée (contrainte base ou doublon).", e);
         } catch (Exception e) {
-            e.printStackTrace(); // Pour afficher l'exception complète
-           throw new ResponseStatusException(HttpStatus.CONFLICT, "La salle est déjà réservée.", e);
-//            throw new ResponseStatusException(HttpStatus.CONFLICT, "Une erreur dans le processus.", e);
+            e.printStackTrace();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Une erreur est survenue lors de la création de l'activité.", e);
         }
 //        catch (Exception ee) {
 //            ee.printStackTrace(); // Pour afficher l'exception complète
@@ -128,7 +154,7 @@ public void envoiMail(Activite activiteCree){
             emailBodyBuilder.append("<head>");
             emailBodyBuilder.append("<meta charset=\"UTF-8\">");
             emailBodyBuilder.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-            emailBodyBuilder.append("<title>Nouvelle Activité Créée</title>");
+            emailBodyBuilder.append("<title>Activité validée — information ODC</title>");
             emailBodyBuilder.append("<style>");
             emailBodyBuilder.append("  body { font-family: Arial, sans-serif; background-color: #f39c12; margin: 0; padding: 20px; }");
             emailBodyBuilder.append("  .container { background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }");
@@ -140,16 +166,17 @@ public void envoiMail(Activite activiteCree){
             emailBodyBuilder.append("<body>");
             emailBodyBuilder.append("<div class=\"container\">");
             emailBodyBuilder.append("<div class=\"header\">");
-            emailBodyBuilder.append("<h2>Nouvelle Activité Créée</h2>");
+            emailBodyBuilder.append("<h2>Activité validée par le directeur ODC</h2>");
             emailBodyBuilder.append("</div>");
             emailBodyBuilder.append("<div class=\"content\">");
             emailBodyBuilder.append("<p>Bonjour,</p>");
-            emailBodyBuilder.append("<p>Une nouvelle activité a été créée dans notre système.</p>");
-            emailBodyBuilder.append("<p><strong>Nom de l'activité :</strong> ").append(activiteCree.getNom()).append("</p>");
-            emailBodyBuilder.append("<p><strong>Description :</strong> ").append(activiteCree.getDescription()).append("</p>");
+            emailBodyBuilder.append("<p>Une activité vient d'être <strong>validée par le directeur ODC</strong> ; cette notification est envoyée à tout le personnel ODC.</p>");
+            emailBodyBuilder.append("<p><strong>Nom de l'activité :</strong> ").append(escapeHtml(activiteCree.getNom())).append("</p>");
+            emailBodyBuilder.append("<p><strong>Description :</strong> ").append(escapeHtml(activiteCree.getDescription())).append("</p>");
             emailBodyBuilder.append("<p><strong>Date du:</strong> ").append(date1).append(" AU: ").append(date2).append("</p>");
-            emailBodyBuilder.append("<p><strong>Dans la Salle :</strong> ").append(salle).append("</p>");
-            emailBodyBuilder.append("<p>Nous vous invitons à consulter cette activité pour plus de détails.</p>");
+            emailBodyBuilder.append("<p><strong>Dans la Salle :</strong> ").append(escapeHtml(salle)).append("</p>");
+            String lienApp = buildFrontendUrl("/dashboardActivite");
+            emailBodyBuilder.append("<p><a href=\"").append(lienApp).append("\">Ouvrir l'application (tableau des activités)</a></p>");
             emailBodyBuilder.append("</div>");
             emailBodyBuilder.append("<div class=\"footer\">");
             emailBodyBuilder.append("<p>L'équipe <strong>ODC</strong></p>");
@@ -160,7 +187,7 @@ public void envoiMail(Activite activiteCree){
             emailBodyBuilder.append("</html>");
 
             String emailBody = emailBodyBuilder.toString();
-            String sujet = "Nouvelle Activité Créée: " + activiteCree.getNom();
+            String sujet = "[ODC Activité] Validée par le directeur : " + activiteCree.getNom();
 //emailService.sendSimpleEmail("fatoumata.KALOGA@orangemali.com", sujet, emailBody);
 // Envoyer un email HTML à chaque utilisateur ayant le rôle "personnel"
             for (String email : emailsPersonnel) {
@@ -177,12 +204,16 @@ public void envoiMail(Activite activiteCree){
         String createur = activiteCree.getCreatedBy() != null
                 ? activiteCree.getCreatedBy().getPrenom() + " " + activiteCree.getCreatedBy().getNom()
                 : "un personnel";
-        String lien = appFrontendBaseUrl + "/authentication/signin";
+        String lienConnexion = buildFrontendUrl("/authentication/signin");
+        String lienValidation = buildFrontendUrl(directeurValidationActivitesPath);
         String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(createur)
                 + "</strong> a créé une activité <strong>" + escapeHtml(activiteCree.getNom())
                 + "</strong> en attente de votre validation.</p>"
-                + "<p>Connectez-vous en tant que directeur ODC pour valider ou refuser : "
-                + "<a href=\"" + lien + "\">" + lien + "</a></p>";
+                + "<p>Connectez-vous en directeur ODC, puis ouvrez la page de validation : "
+                + "<a href=\"" + lienConnexion + "\">Connexion</a></p>"
+                + "<p>Raccourci vers la liste à traiter : <a href=\"" + lienValidation + "\">"
+                + lienValidation + "</a> (après connexion).</p>"
+                + "<p>Vous pourrez valider ou refuser depuis le tableau de bord.</p>";
         String sujet = "[ODC Activité] Validation requise : " + activiteCree.getNom();
         for (Utilisateur d : directeurs) {
             if (d.getEmail() != null && !d.getEmail().isBlank()) {
@@ -190,6 +221,15 @@ public void envoiMail(Activite activiteCree){
                         "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
             }
         }
+    }
+
+    private String buildFrontendUrl(String pathOrAbsolute) {
+        String base = appFrontendBaseUrl == null ? "" : appFrontendBaseUrl.replaceAll("/+$", "");
+        if (pathOrAbsolute == null || pathOrAbsolute.isBlank()) {
+            return base;
+        }
+        String p = pathOrAbsolute.startsWith("/") ? pathOrAbsolute : "/" + pathOrAbsolute;
+        return base + p;
     }
 
     private static String escapeHtml(String s) {

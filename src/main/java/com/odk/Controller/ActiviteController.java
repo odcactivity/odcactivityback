@@ -23,8 +23,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Autowired;
-
 @RestController
 @AllArgsConstructor
 @RequestMapping("/activite")
@@ -33,8 +31,8 @@ public class ActiviteController {
 
     private final ActiviteRepository activiteRepository;
     private final UtilisateurRepository utilisateurRepository;
-    private ActiviteService activiteService;
-    private EtapeRepository etapeRepository;
+    private final ActiviteService activiteService;
+    private final EtapeRepository etapeRepository;
     private final EtapeMapper etapeMapper;
      private final ActiviteMapper activiteMapper;
   

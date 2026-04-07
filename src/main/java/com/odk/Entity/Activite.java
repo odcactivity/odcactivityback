@@ -4,10 +4,11 @@ package com.odk.Entity;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.odk.Enum.Statut;
+import com.odk.jackson.JpaRefIdDeserializers;
 import jakarta.persistence.*;
 import lombok.*;
-import net.minidev.json.annotate.JsonIgnore;
 
 import java.util.*;
 
@@ -47,12 +48,12 @@ public class Activite {
     private Integer cible;
     @ManyToOne(cascade = CascadeType.DETACH)
     @JoinColumn(name = "entite_id")
-    @JsonIgnore
+    @JsonDeserialize(using = JpaRefIdDeserializers.EntiteRef.class)
     private Entite entite;
 
     @ManyToOne(cascade = CascadeType.DETACH)
     @JoinColumn(name = "typeActivite_id")
-    @JsonIgnore
+    @JsonDeserialize(using = JpaRefIdDeserializers.TypeActiviteRef.class)
     private TypeActivite typeActivite;
 
     @OneToMany(mappedBy = "activite", cascade = CascadeType.MERGE)
@@ -63,6 +64,7 @@ public class Activite {
     private Utilisateur createdBy;
     @ManyToOne
     @JoinColumn(name = "salleId")
+    @JsonDeserialize(using = JpaRefIdDeserializers.SalleRef.class)
     private Salle salleId;
 
 
@@ -91,6 +93,5 @@ private List<ActiviteValidation> validations = new ArrayList<>();
             throw new RuntimeException("Les dates de début et de fin doivent être définies pour gérer le statut.");
         }
     }
-
 
 }
