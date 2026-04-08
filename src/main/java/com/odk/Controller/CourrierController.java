@@ -2,6 +2,7 @@ package com.odk.Controller;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,10 @@ import com.odk.Enum.StatutCourrier;
 import com.odk.Service.Interface.Service.CourrierService;
 import com.odk.Service.Interface.Service.ReponseCourrierService;
 import com.odk.Service.Interface.Service.UtilisateurService;
+import com.odk.Entity.Entite;
 import com.odk.dto.CourrierDTO;
+import com.odk.dto.EntiteDTO;
+import com.odk.dto.EntiteMapper;
 import com.odk.dto.ReponseCourrierDTO;
 import com.odk.exception.CourrierValidationException;
 
@@ -73,6 +77,14 @@ public class CourrierController {
     /* ======================================================
      *  PARTIE 2 : IMPUTATION PAR LE DIRECTEUR
      * ====================================================== */
+    @GetMapping("/odc/directions-emission")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR')")
+    public ResponseEntity<List<EntiteDTO>> listerDirectionsEmissionOdc() {
+        List<Entite> dirs = courrierService.listerDirectionsOdcPourBrouillon();
+        return ResponseEntity.ok(
+                dirs.stream().map(EntiteMapper::toDto).collect(Collectors.toList()));
+    }
+
     @PostMapping("/odc/brouillon")
     @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
     public ResponseEntity<Courrier> brouillonOdc(
@@ -217,6 +229,13 @@ public class CourrierController {
     ) {
         courrierService.archiverCourrier(id, utilisateur);
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/delete/{id}")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<Void> supprimerCourrier(@PathVariable Long id) {
+        courrierService.supprimerCourrier(id);
+        return ResponseEntity.noContent().build();
     }
 
     /* ======================================================

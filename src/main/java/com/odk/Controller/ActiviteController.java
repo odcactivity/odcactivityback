@@ -206,8 +206,9 @@ public class ActiviteController {
     @GetMapping("/nombreActivitesEnAttente")
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEnAttente() {
-        long count = activiteRepository.countByStatut(Statut.En_Attente); // Compte les activités avec statut "En_Cours"
-        return ResponseEntity.ok(count); // Retourne le nombre d'activités
+        long count = activiteRepository.countByStatutIn(
+                Arrays.asList(Statut.En_Attente, Statut.En_Validation_Directeur_ODC));
+        return ResponseEntity.ok(count);
     }
 
     @GetMapping("/nombreActivitesTerminer")

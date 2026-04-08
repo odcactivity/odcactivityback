@@ -30,6 +30,7 @@ import com.odk.Enum.StatutCourrier;
 import com.odk.Repository.CourrierRepository;
 import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.HistoriqueCourrierRepository;
+import com.odk.Repository.ReponseCourrierRepository;
 import com.odk.Repository.UtilisateurRepository;
 import com.odk.dto.CourrierDTO;
 import com.odk.validation.CourrierValidator;
@@ -40,6 +41,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -47,12 +49,13 @@ public class CourrierService {
 
     private static final Logger log = LoggerFactory.getLogger(CourrierService.class);
 
-    @Value("${app.frontend.base-url:http://localhost:4200}")
+    @Value("${app.frontend.base-url:https://odc-activite.com}")
     private String appFrontendBaseUrl;
 
     private final CourrierRepository courrierRepository;
     private final EntiteOdcRepository entiteRepository;
     private final HistoriqueCourrierRepository historiqueRepository;
+    private final ReponseCourrierRepository reponseCourrierRepository;
     private final EmailService emailService;
     private final UtilisateurRepository utilisateurRepository;
     private final String uploadDir = "uploads/courriers";
@@ -277,6 +280,16 @@ public class CourrierService {
         }
     }
 
+    @Transactional
+    public void supprimerCourrier(Long courrierId) {
+        if (!courrierRepository.existsById(courrierId)) {
+            throw new CourrierValidationException("Courrier introuvable.");
+        }
+        reponseCourrierRepository.deleteByCourrierId(courrierId);
+        historiqueRepository.deleteByCourrierId(courrierId);
+        courrierRepository.deleteById(courrierId);
+    }
+
     /* ======================================================
      *  MÉTHODES UTILITAIRES
      * ====================================================== */
@@ -390,6 +403,16 @@ public class CourrierService {
                 StatutCourrier.EN_REVISION_ADMIN_COURRIER));
     }
 
+    /**
+     * Directions autorisées pour un brouillon ODC (même règles que {@link #creerBrouillonOdc}).
+     */
+    public List<Entite> listerDirectionsOdcPourBrouillon() {
+        return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(e -> !nomIndiqueDcire(e))
+                .filter(this::estDirectionOdc)
+                .toList();
+    }
+
     public Courrier creerBrouillonOdc(Long odcDirectionId, CourrierDTO dto) throws IOException {
         Entite odcDir = entiteRepository.findById(odcDirectionId)
                 .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable"));
@@ -482,14 +505,14 @@ public class CourrierService {
         if (courrier.getStatut() != StatutCourrier.EN_REVISION_ADMIN_COURRIER) {
             throw new CourrierValidationException("Ce courrier n'est pas en révision côté admin.");
         }
-        courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_ODC);
         courrierRepository.save(courrier);
 
         HistoriqueCourrier historique = new HistoriqueCourrier();
         historique.setCourrier(courrier);
         historique.setEntite(courrier.getEntite());
         historique.setUtilisateur(null);
-        historique.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC);
+        historique.setStatut(StatutCourrier.ATTENTE_VALIDATION_ODC);
         historique.setCommentaire("Courrier resoumis par l'admin après prise en compte des suggestions");
         historique.setDateAction(new Date());
         historique.setAncienneEntite(courrier.getEntite());

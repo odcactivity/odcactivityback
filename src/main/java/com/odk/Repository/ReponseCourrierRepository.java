@@ -20,4 +20,6 @@ public interface ReponseCourrierRepository extends JpaRepository<ReponseCourrier
 
     @Query("SELECT COUNT(r) > 0 FROM ReponseCourrier r WHERE r.courrier.id = :courrierId AND r.email = :email")
     boolean hasUserResponded(@Param("courrierId") Long courrierId, @Param("email") String email);
+
+    void deleteByCourrierId(Long courrierId);
 }

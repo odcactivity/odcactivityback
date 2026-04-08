@@ -43,7 +43,7 @@ public class ActiviteService implements CrudService<Activite, Long> {
 
     private static final Logger log = LoggerFactory.getLogger(ActiviteService.class);
 
-    @Value("${app.frontend.base-url:http://localhost:4200}")
+    @Value("${app.frontend.base-url:https://odc-activite.com}")
     private String appFrontendBaseUrl;
 
     @Value("${app.frontend.directeur-validation-activites-path:/directeur-odc/validation-activites}")
@@ -223,13 +223,14 @@ public void envoiMail(Activite activiteCree){
         }
     }
 
+    /** Aligné sur HashLocationStrategy du front Angular (voir app.config.ts) : base + /#/ + route. */
     private String buildFrontendUrl(String pathOrAbsolute) {
-        String base = appFrontendBaseUrl == null ? "" : appFrontendBaseUrl.replaceAll("/+$", "");
+        String base = appFrontendBaseUrl == null ? "" : appFrontendBaseUrl.trim().replaceAll("/+$", "");
         if (pathOrAbsolute == null || pathOrAbsolute.isBlank()) {
-            return base;
+            return base.isEmpty() ? "/#/" : base + "/#/";
         }
-        String p = pathOrAbsolute.startsWith("/") ? pathOrAbsolute : "/" + pathOrAbsolute;
-        return base + p;
+        String path = pathOrAbsolute.replaceFirst("^/+", "");
+        return base + "/#/" + path;
     }
 
     private static String escapeHtml(String s) {

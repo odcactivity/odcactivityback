@@ -4,6 +4,7 @@ import java.util.Date;
 
 import com.odk.Enum.StatutCourrier;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -49,6 +50,7 @@ public class Courrier {
     private Date dateArchivage;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "statut", length = 64)
     private StatutCourrier statut; //Statut courant du dossier ...
 
     @ManyToOne

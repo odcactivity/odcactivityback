@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +24,9 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
     long countActivitesByUserCustom(@Param("userId") Long userId);
 
     long countByStatut(Statut statut);
+
+    /** Pour le dashboard : « en attente » = en file + en validation directeur ODC (aligné sur le graphe). */
+    long countByStatutIn(Collection<Statut> statuts);
 
     List<Activite> findByDateDebutBetween(Date start, Date end);
 
