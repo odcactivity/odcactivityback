@@ -2,6 +2,7 @@ package com.odk.Entity;
 
 import java.util.Date;
 
+import com.odk.Enum.DestinataireCourrierOdc;
 import com.odk.Enum.StatutCourrier;
 
 import jakarta.persistence.Column;
@@ -81,6 +82,17 @@ public class Courrier {
     /** Dernières remarques / suggestions du directeur ODC (révision contenu) */
     @jakarta.persistence.Column(columnDefinition = "TEXT")
     private String suggestionDirecteur;
+
+    /**
+     * Choix du destinataire lors de la création ODC (brouillon). {@code EXTERNE} ou absent = hub DCIRE.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "destinataire_odc", length = 32)
+    private DestinataireCourrierOdc destinataireOdc;
+
+    /** Précision optionnelle pour une cible externe (structure hors division), si besoin métier. */
+    @Column(name = "externe_precision", length = 512)
+    private String externePrecision;
 
 
     /**---------------------------------------------------

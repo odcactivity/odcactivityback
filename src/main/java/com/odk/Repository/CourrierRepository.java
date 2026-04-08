@@ -30,6 +30,9 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     //Récupérer les courriers archivés
     List<Courrier> findByEntiteIdAndStatut(Long entiteId, StatutCourrier statut);
+
+    List<Courrier> findByStructureOrigineIdAndStatutNotOrderByDateReceptionDesc(
+            Long structureOrigineId, StatutCourrier statut);
     List<Courrier> findByDirectionInitialAndStatut(Entite directionInitialId, StatutCourrier statut);
     List<Courrier> findByDirectionInitial(Entite directionInitialId);
 
@@ -52,11 +55,22 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
     @Query("SELECT c FROM Courrier c ORDER BY c.dateReception DESC")
     List<Courrier> findAllOrderByDateReceptionDesc();
 
+    List<Courrier> findByEntiteIdOrderByDateReceptionDesc(Long entiteId);
+
+    List<Courrier> findByStructureOrigineIdOrderByDateReceptionDesc(Long structureOrigineId);
+
+    @Query("SELECT DISTINCT c FROM Courrier c WHERE "
+            + "(c.structureOrigine IS NOT NULL AND c.structureOrigine.id = :eid) OR "
+            + "(c.entite IS NOT NULL AND c.entite.id = :eid) OR "
+            + "(c.entite IS NOT NULL AND c.entite.parent IS NOT NULL AND c.entite.parent.id = :eid) "
+            + "ORDER BY c.dateReception DESC")
+    List<Courrier> findTousVisiblesPourDirection(@Param("eid") Long entiteId);
+
     /**
      * Trouve les courriers qui nécessitent un rappel (date limite dans 7 jours ou moins)
      */
     @Query("SELECT c FROM Courrier c WHERE c.statut NOT IN ('ARCHIVER', 'REPONDU', 'ATTENTE_VALIDATION_ODC', "
-            + "'ATTENTE_VALIDATION_DIRECTEUR_ODC', 'EN_REVISION_ADMIN_COURRIER') " +
+            + "'ATTENTE_VALIDATION_DIRECTEUR_ODC', 'EN_REVISION_ADMIN_COURRIER', 'ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE') " +
             "AND c.rappelEnvoye = false " +
             "AND c.dateLimite <= :dateRappel " +
             "ORDER BY c.dateLimite ASC")

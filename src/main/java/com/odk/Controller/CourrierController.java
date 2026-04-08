@@ -2,6 +2,7 @@ package com.odk.Controller;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.core.io.InputStreamResource;
@@ -92,6 +93,8 @@ public class CourrierController {
             @RequestParam String numero,
             @RequestParam String objet,
             @RequestParam String expediteur,
+            @RequestParam(required = false) String destinataireOdc,
+            @RequestParam(required = false) String externePrecision,
             @RequestParam(required = false) MultipartFile fichier
     ) throws IOException {
         CourrierDTO dto = new CourrierDTO();
@@ -99,6 +102,8 @@ public class CourrierController {
         dto.setObjet(objet);
         dto.setExpediteur(expediteur);
         dto.setDirectionId(odcDirectionId);
+        dto.setDestinataireOdc(destinataireOdc);
+        dto.setExternePrecision(externePrecision);
         dto.setFichier(fichier);
         return ResponseEntity.ok(courrierService.creerBrouillonOdc(odcDirectionId, dto));
     }
@@ -135,8 +140,67 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.annulerCourrierParDirecteurOdc(id));
     }
 
+    @GetMapping("/structure-directeur/en-attente-validation")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<List<Courrier>> listerAttenteValidationStructure(
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.listerPourValidationDirecteurStructure(utilisateur));
+    }
+
+    @GetMapping("/structure-directeur/tableau")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Map<String, List<Courrier>>> tableauStructure(@AuthenticationPrincipal Utilisateur u) {
+        return ResponseEntity.ok(courrierService.tableauStructureCourriers(u));
+    }
+
+    @GetMapping("/structure-directeur/cibles-internes")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<List<EntiteDTO>> ciblesInternesStructure(@AuthenticationPrincipal Utilisateur u) {
+        return ResponseEntity.ok(
+                courrierService.listerDirectionsCiblesInternesPourStructure(u).stream()
+                        .map(EntiteMapper::toDto)
+                        .collect(Collectors.toList()));
+    }
+
+    @PostMapping("/structure-directeur/{id}/valider-reception")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> validerReceptionStructure(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.validerReceptionParDirecteurStructure(id, utilisateur));
+    }
+
+    @PostMapping("/structure-directeur/{id}/accuser-reception")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> accuserReceptionStructure(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.accuserReceptionOperationnelle(id, utilisateur));
+    }
+
+    @PostMapping("/structure-directeur/courrier-interne")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> courrierInterneDepuisStructure(
+            @RequestParam Long cibleDirectionId,
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam String expediteur,
+            @RequestParam(required = false) MultipartFile fichier,
+            @AuthenticationPrincipal Utilisateur utilisateur
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur);
+        dto.setDirectionId(cibleDirectionId);
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(
+                courrierService.enregistrerCourrierInterneDepuisMaStructure(cibleDirectionId, dto, utilisateur));
+    }
+
     @PostMapping("/division-interne")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') "
+            + "or hasRole('DIRECTEUR_FONDATION') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI')")
     public ResponseEntity<Courrier> courrierInterneDivision(
             @RequestParam Long origineDirectionId,
             @RequestParam Long cibleDirectionId,

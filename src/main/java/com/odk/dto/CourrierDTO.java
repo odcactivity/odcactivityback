@@ -13,4 +13,7 @@ public class CourrierDTO {
     private String expediteur;
     private Long directionId; //Entite direction ...
     private MultipartFile fichier; //Piece jointe ...
+    /** FONDATION | RSE | DCI | EXTERNE — création ODC uniquement */
+    private String destinataireOdc;
+    private String externePrecision;
 }

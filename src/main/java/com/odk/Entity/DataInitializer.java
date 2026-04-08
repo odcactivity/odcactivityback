@@ -1,5 +1,7 @@
 package com.odk.Entity;
 
+import com.odk.Enum.TypeEntite;
+import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.RoleRepository;
 import com.odk.Repository.UtilisateurRepository;
 import lombok.AllArgsConstructor;
@@ -16,6 +18,7 @@ public class DataInitializer implements CommandLineRunner {
     private UtilisateurRepository utilisateurRepository;
     private PasswordEncoder passwordEncoder;
     private RoleRepository roleRepository;
+    private EntiteOdcRepository entiteOdcRepository;
 
     @Override
     public void run(String... args) throws Exception {
@@ -132,5 +135,60 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Utilisateur DIRECTEUR_ODC existe déjà !");
         }
 
+        creerDirecteurStructureSiEntiteExiste(
+                "DIRECTEUR_FONDATION", "directeurFondation@gmail.com", "Fondation", "FONDATION");
+        creerDirecteurStructureSiEntiteExiste(
+                "DIRECTEUR_RSE", "directeurRSE@gmail.com", "RSE", "RSE");
+        creerDirecteurStructureSiEntiteExiste(
+                "DIRECTEUR_DCI", "directeurDCI@gmail.com", "DCI", "DCI");
+    }
+
+    private void creerDirecteurStructureSiEntiteExiste(
+            String roleNom, String email, String prenom, String motClefDirection) {
+        Role role = roleRepository
+                .findByNom(roleNom)
+                .orElseGet(() -> {
+                    Role r = new Role();
+                    r.setNom(roleNom);
+                    return roleRepository.save(r);
+                });
+        Optional<Entite> entOpt = entiteOdcRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(e -> {
+                    String n = e.getNom() != null ? e.getNom().toUpperCase().replaceAll("\\s+", " ").trim() : "";
+                    if (n.contains("DCIRE")) {
+                        return false;
+                    }
+                    if ("FONDATION".equals(motClefDirection)) {
+                        return n.contains("FONDATION");
+                    }
+                    if ("RSE".equals(motClefDirection)) {
+                        return n.contains("RSE");
+                    }
+                    if ("DCI".equals(motClefDirection)) {
+                        return n.contains("DCI") && !n.contains("DCIRE");
+                    }
+                    return false;
+                })
+                .findFirst();
+        if (entOpt.isEmpty()) {
+            System.out.println("Init : aucune direction « " + motClefDirection + " » — compte " + email + " non créé.");
+            return;
+        }
+        Entite entite = entOpt.get();
+        if (utilisateurRepository.findByEmail(email).isPresent()) {
+            System.out.println("Utilisateur " + roleNom + " existe déjà !");
+            return;
+        }
+        Utilisateur u = new Utilisateur();
+        u.setNom(roleNom.replace("DIRECTEUR_", ""));
+        u.setPrenom(prenom);
+        u.setPhone("00000000");
+        u.setGenre("Homme");
+        u.setEmail(email);
+        u.setPassword(passwordEncoder.encode("motdepasse123"));
+        u.setRole(role);
+        u.setEntite(entite);
+        utilisateurRepository.save(u);
+        System.out.println("Utilisateur " + roleNom + " (" + email + ") créé — entité : " + entite.getNom());
     }
 }

@@ -21,4 +21,6 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
 
     List<Utilisateur> findByRole_Nom(String nom);
 
+    List<Utilisateur> findByEntite_Id(Long entiteId);
+
 }
