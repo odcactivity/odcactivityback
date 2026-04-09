@@ -55,6 +55,14 @@ public class CourrierService {
     @Value("${app.frontend.base-url:https://odc-activite.com}")
     private String appFrontendBaseUrl;
 
+    /**
+     * Optionnel : ID de l’entité Direction « hub » DCIRE si son nom en base ne matche pas les heuristiques
+     * ({@link #nomIndiqueDcire}). Sur Elastic Beanstalk : variable d’environnement ou entrée dans
+     * application.properties, ex. {@code app.courrier.dcire-direction-id=42}. 0 = désactivé.
+     */
+    @Value("${app.courrier.dcire-direction-id:0}")
+    private long configuredDcireDirectionId;
+
     private final CourrierRepository courrierRepository;
     private final EntiteOdcRepository entiteRepository;
     private final HistoriqueCourrierRepository historiqueRepository;
@@ -923,7 +931,7 @@ public class CourrierService {
         return switch (dest) {
             case FONDATION -> n.contains("FONDATION");
             case RSE -> n.contains("RSE");
-            case DCI -> n.contains("DCI") && !n.contains("DCIRE");
+            case DCI -> n.contains("DCI") && !nomIndiqueDcire(e);
             default -> false;
         };
     }
@@ -982,15 +990,37 @@ public class CourrierService {
     }
 
     private Entite resolveDcireDirection() {
+        if (configuredDcireDirectionId > 0) {
+            Entite e = entiteRepository
+                    .findById(configuredDcireDirectionId)
+                    .orElseThrow(() -> new CourrierValidationException(
+                            "Configuration app.courrier.dcire-direction-id="
+                                    + configuredDcireDirectionId
+                                    + " : aucune entité avec cet identifiant."));
+            if (e.getType() != TypeEntite.DIRECTION) {
+                throw new CourrierValidationException(
+                        "app.courrier.dcire-direction-id doit référencer une entité de type Direction.");
+            }
+            return e;
+        }
         return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
                 .filter(this::nomIndiqueDcire)
                 .findFirst()
                 .orElseThrow(() -> new CourrierValidationException(
-                        "Aucune direction DCIRE trouvée : créez une direction dont le nom contient « DCIRE »."));
+                        "Aucune direction DCIRE trouvée : créez une direction dont le nom contient « DCIRE » ou "
+                                + "« DCI RE », ou définissez app.courrier.dcire-direction-id=<id> dans la configuration."));
     }
 
     private boolean nomIndiqueDcire(Entite e) {
-        return normalizeNomEntite(e.getNom()).contains("DCIRE");
+        if (e == null || e.getNom() == null) {
+            return false;
+        }
+        String n = normalizeNomEntite(e.getNom());
+        if (n.contains("DCIRE")) {
+            return true;
+        }
+        String withSpaces = n.replace('-', ' ');
+        return withSpaces.contains("DCI RE");
     }
 
     private String normalizeNomEntite(String nom) {

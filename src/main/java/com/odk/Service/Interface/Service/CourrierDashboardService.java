@@ -13,8 +13,10 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.odk.Entity.Courrier;
+import com.odk.Entity.Entite;
 import com.odk.Enum.StatutCourrier;
 import com.odk.Repository.CourrierRepository;
 import com.odk.dto.CourrierDashboardBucketDTO;
@@ -26,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class CourrierDashboardService {
 
     private static final ZoneId TZ = ZoneId.systemDefault();
@@ -115,17 +118,34 @@ public class CourrierDashboardService {
         return new ArrayList<>(courrierRepository.findAllNonArchivedForDashboard(StatutCourrier.ARCHIVER));
     }
 
+    /**
+     * Une direction regroupe les courriers rattachés à elle-même ou à l’un de ses services (toute profondeur).
+     * Le service est transactionnel : la chaîne {@code parent} peut être résolue par Hibernate si besoin.
+     */
+    private boolean entiteLieADirection(Entite e, Long directionId) {
+        if (e == null || directionId == null) {
+            return false;
+        }
+        int guard = 0;
+        for (Entite cur = e; cur != null && guard++ < 32; cur = cur.getParent()) {
+            if (directionId.equals(cur.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean matchesStructureFilter(Courrier c, Long structureId) {
         if (structureId == null) {
             return true;
         }
-        if (c.getEntite() != null && structureId.equals(c.getEntite().getId())) {
+        if (entiteLieADirection(c.getEntite(), structureId)) {
             return true;
         }
-        if (c.getStructureOrigine() != null && structureId.equals(c.getStructureOrigine().getId())) {
+        if (entiteLieADirection(c.getStructureOrigine(), structureId)) {
             return true;
         }
-        if (c.getDirectionInitial() != null && structureId.equals(c.getDirectionInitial().getId())) {
+        if (entiteLieADirection(c.getDirectionInitial(), structureId)) {
             return true;
         }
         return false;
