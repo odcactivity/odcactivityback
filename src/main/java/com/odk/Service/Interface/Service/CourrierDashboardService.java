@@ -59,7 +59,11 @@ public class CourrierDashboardService {
             m.put(c, 0L);
         }
         for (Courrier c : list) {
-            categorie(c).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+            try {
+                categorie(c).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+            } catch (RuntimeException ex) {
+                // Ne bloque pas le dashboard pour un courrier incohérent.
+            }
         }
         return new CourrierDashboardTotalsDTO(
                 m.get(Cat.emis),
@@ -92,22 +96,26 @@ public class CourrierDashboardService {
             row.setDetails(new ArrayList<>());
 
             for (Courrier c : list) {
-                LocalDate dr = receptionDate(c);
-                if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
-                    continue;
+                try {
+                    LocalDate dr = receptionDate(c);
+                    if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
+                        continue;
+                    }
+                    Optional<Cat> cat = categorie(c);
+                    if (cat.isEmpty()) {
+                        continue;
+                    }
+                    switch (cat.get()) {
+                        case emis -> row.setEmis(row.getEmis() + 1);
+                        case repondu -> row.setRepondu(row.getRepondu() + 1);
+                        case enAttente -> row.setEnAttente(row.getEnAttente() + 1);
+                        case recu -> row.setRecu(row.getRecu() + 1);
+                        case valide -> row.setValide(row.getValide() + 1);
+                    }
+                    safeDetailRow(c, cat.get()).ifPresent(d -> row.getDetails().add(d));
+                } catch (RuntimeException ex) {
+                    // Skip d'un enregistrement invalide, sans interrompre toute la série.
                 }
-                Optional<Cat> cat = categorie(c);
-                if (cat.isEmpty()) {
-                    continue;
-                }
-                switch (cat.get()) {
-                    case emis -> row.setEmis(row.getEmis() + 1);
-                    case repondu -> row.setRepondu(row.getRepondu() + 1);
-                    case enAttente -> row.setEnAttente(row.getEnAttente() + 1);
-                    case recu -> row.setRecu(row.getRecu() + 1);
-                    case valide -> row.setValide(row.getValide() + 1);
-                }
-                row.getDetails().add(detailRow(c, cat.get()));
             }
             dto.getBuckets().add(row);
         }
@@ -127,9 +135,15 @@ public class CourrierDashboardService {
             return false;
         }
         int guard = 0;
-        for (Entite cur = e; cur != null && guard++ < 32; cur = cur.getParent()) {
-            if (directionId.equals(cur.getId())) {
-                return true;
+        Entite cur = e;
+        while (cur != null && guard++ < 32) {
+            try {
+                if (directionId.equals(cur.getId())) {
+                    return true;
+                }
+                cur = cur.getParent();
+            } catch (RuntimeException ex) {
+                return false;
             }
         }
         return false;
@@ -191,6 +205,19 @@ public class CourrierDashboardService {
                 dstr);
     }
 
+    /**
+     * Protège la série « évolution » contre des données relationnelles partielles
+     * (entité supprimée, proxy cassé, etc.) : on conserve les compteurs même si
+     * une ligne de détail est illisible.
+     */
+    private Optional<CourrierDashboardDetailRowDTO> safeDetailRow(Courrier c, Cat cat) {
+        try {
+            return Optional.of(detailRow(c, cat));
+        } catch (RuntimeException ex) {
+            return Optional.empty();
+        }
+    }
+
     private static String libelle(Cat cat) {
         return switch (cat) {
             case emis -> "Émis";
@@ -202,18 +229,34 @@ public class CourrierDashboardService {
     }
 
     private static String structureLabel(Courrier c) {
-        if (c.getEntite() != null && c.getEntite().getNom() != null && !c.getEntite().getNom().isBlank()) {
-            return c.getEntite().getNom().trim();
+        String n1 = safeNom(c.getEntite());
+        if (n1 != null) {
+            return n1;
         }
-        if (c.getStructureOrigine() != null && c.getStructureOrigine().getNom() != null
-                && !c.getStructureOrigine().getNom().isBlank()) {
-            return c.getStructureOrigine().getNom().trim();
+        String n2 = safeNom(c.getStructureOrigine());
+        if (n2 != null) {
+            return n2;
         }
-        if (c.getDirectionInitial() != null && c.getDirectionInitial().getNom() != null
-                && !c.getDirectionInitial().getNom().isBlank()) {
-            return c.getDirectionInitial().getNom().trim();
+        String n3 = safeNom(c.getDirectionInitial());
+        if (n3 != null) {
+            return n3;
         }
         return "—";
+    }
+
+    private static String safeNom(Entite e) {
+        if (e == null) {
+            return null;
+        }
+        try {
+            String n = e.getNom();
+            if (n == null || n.isBlank()) {
+                return null;
+            }
+            return n.trim();
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private List<Bucket> buildWeekBuckets(LocalDate today) {
