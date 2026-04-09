@@ -75,4 +75,11 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
             "AND c.dateLimite <= :dateRappel " +
             "ORDER BY c.dateLimite ASC")
     List<Courrier> findCourriersPourRappel(@Param("dateRappel") LocalDate dateRappel);
+
+    @Query("SELECT DISTINCT c FROM Courrier c "
+            + "LEFT JOIN FETCH c.entite "
+            + "LEFT JOIN FETCH c.structureOrigine "
+            + "LEFT JOIN FETCH c.directionInitial "
+            + "WHERE c.statut <> :arch")
+    List<Courrier> findAllNonArchivedForDashboard(@Param("arch") StatutCourrier arch);
 }

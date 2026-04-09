@@ -35,6 +35,7 @@ import com.odk.Repository.HistoriqueCourrierRepository;
 import com.odk.Repository.ReponseCourrierRepository;
 import com.odk.Repository.UtilisateurRepository;
 import com.odk.dto.CourrierDTO;
+import com.odk.dto.CourrierMetadonneesDTO;
 import com.odk.validation.CourrierValidator;
 import com.odk.validation.FileValidationUtil;
 import com.odk.exception.CourrierValidationException;
@@ -1151,5 +1152,98 @@ public class CourrierService {
             return "";
         }
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    /**
+     * Télécharge la pièce jointe pour le directeur ODC sans modifier le statut ni l’historique
+     * (consultation avant validation ou suggestions).
+     */
+    public ResponseEntity<InputStreamResource> telechargerPourValidationDirecteurOdc(Long courrierId) throws IOException {
+        Courrier courrier = getCourrier(courrierId);
+        List<StatutCourrier> ok = Arrays.asList(
+                StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC,
+                StatutCourrier.EN_REVISION_ADMIN_COURRIER,
+                StatutCourrier.ATTENTE_VALIDATION_ODC);
+        if (!ok.contains(courrier.getStatut())) {
+            throw new CourrierValidationException("Ce courrier n'est pas consultable à cette étape.");
+        }
+        if (courrier.getFichier() == null || courrier.getFichier().isBlank()) {
+            throw new CourrierValidationException("Aucune pièce jointe pour ce courrier.");
+        }
+        File fichier = new File(courrier.getFichier());
+        if (!fichier.exists()) {
+            throw new CourrierValidationException("Fichier introuvable sur le serveur.");
+        }
+        InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
+                .contentLength(fichier.length())
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+    }
+
+    private boolean peutGererMetadonneesOuSuppressionCourrier(Utilisateur u, Courrier c) {
+        Utilisateur full = utilisateurRepository.findById(u.getId()).orElse(u);
+        if (full.getRole() == null || full.getRole().getNom() == null) {
+            return false;
+        }
+        String role = full.getRole().getNom().trim().toUpperCase();
+        if ("SUPERADMIN".equals(role) || "ADMIN".equals(role)) {
+            return true;
+        }
+        Long entId = full.getEntite() != null ? full.getEntite().getId() : null;
+        if (entId == null) {
+            return false;
+        }
+        if ("DIRECTEUR".equals(role)) {
+            Entite dcire = resolveDcireDirection();
+            return c.getEntite() != null && Objects.equals(dcire.getId(), c.getEntite().getId());
+        }
+        if (role.startsWith("DIRECTEUR_") && !"DIRECTEUR_ODC".equals(role)) {
+            return listerToutPourMaStructure(full).stream().anyMatch(x -> x.getId().equals(c.getId()));
+        }
+        return false;
+    }
+
+    @Transactional
+    public Courrier mettreAJourMetadonneesCourrier(Long courrierId, CourrierMetadonneesDTO dto, Utilisateur principal) {
+        if (dto == null) {
+            throw new CourrierValidationException("Données invalides.");
+        }
+        Courrier c = getCourrier(courrierId);
+        Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
+        if (!peutGererMetadonneesOuSuppressionCourrier(u, c)) {
+            throw new CourrierValidationException("Vous n'avez pas le droit de modifier ce courrier.");
+        }
+        if (c.getStatut() == StatutCourrier.ARCHIVER) {
+            throw new CourrierValidationException("Un courrier archivé ne peut pas être modifié.");
+        }
+        if (dto.getNumero() != null && !dto.getNumero().isBlank()) {
+            c.setNumero(dto.getNumero().trim());
+        }
+        if (dto.getObjet() != null && !dto.getObjet().isBlank()) {
+            c.setObjet(dto.getObjet().trim());
+        }
+        if (dto.getExpediteur() != null && !dto.getExpediteur().isBlank()) {
+            c.setExpediteur(dto.getExpediteur().trim());
+        }
+        return courrierRepository.save(c);
+    }
+
+    @Transactional
+    public void supprimerCourrierParDirecteurStructure(Long courrierId, Utilisateur principal) {
+        Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
+        String roleNom = u.getRole() != null && u.getRole().getNom() != null
+                ? u.getRole().getNom().trim().toUpperCase()
+                : "";
+        if ("SUPERADMIN".equals(roleNom) || "ADMIN".equals(roleNom)) {
+            supprimerCourrier(courrierId);
+            return;
+        }
+        Courrier c = getCourrier(courrierId);
+        if (!peutGererMetadonneesOuSuppressionCourrier(u, c)) {
+            throw new CourrierValidationException("Vous n'avez pas le droit de supprimer ce courrier.");
+        }
+        supprimerCourrier(courrierId);
     }
 }

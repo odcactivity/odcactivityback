@@ -26,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -227,6 +228,22 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
     
     
     public Utilisateur updateDTO(UtilisateurDTO utilisateur, Long id) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Non authentifié.");
+        }
+        Utilisateur principal = utilisateurRepository.findByEmail(auth.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable."));
+        boolean fullAccess = isAdminOrSuperadmin(principal);
+        if (!fullAccess && !Objects.equals(principal.getId(), id)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vous ne pouvez modifier que votre propre profil.");
+        }
+        if (!fullAccess) {
+            utilisateur.setRole(null);
+            utilisateur.setEntite(null);
+            utilisateur.setEtat(null);
+        }
+
         System.out.println("mon userDTO++++++++++"+utilisateur);
         return utilisateurRepository.findById(id).map(
                 p -> {
@@ -234,17 +251,13 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
                     p.setEmail(utilisateur.getEmail());
                     p.setPrenom(utilisateur.getPrenom());
                     p.setPhone(utilisateur.getPhone());
-                    p.setEtat(utilisateur.getEtat());
-                    if(utilisateur.getGenre()!=null){
-                     p.setGenre(utilisateur.getGenre());                
+                    if (utilisateur.getEtat() != null) {
+                        p.setEtat(utilisateur.getEtat());
                     }
-                    
-                        
-                    
-                  
+                    if(utilisateur.getGenre()!=null){
+                     p.setGenre(utilisateur.getGenre());
+                    }
 
-                    // Vérifiez si le rôle est null avant de le définir
-//                     roleRepository.findById(utilisateur.getRole().getId()).ifPresent(p::setRole);
                      if(utilisateur.getEntite()!=null){
                     entiteOdcRepository.findById(utilisateur.getEntite().getId()).ifPresent(p::setEntite);
 
@@ -252,20 +265,25 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
                     if (utilisateur.getRole()!= null) {
                      roleRepository.findByNom(utilisateur.getRole().getNom()).ifPresent(p::setRole);
                     }
-//
-//                    if (utilisateur.getEntite().getId() != null) {
-//                        p.setEntite(utilisateur.getEntite());
-//                    }
 
-                    // Si le mot de passe est modifié, encodez-le
-                    if (utilisateur.getPassword() != null && passwordEncoder.matches(utilisateur.getPassword(), p.getPassword()) ) {
+                    boolean veutChangerMdp = utilisateur.getPassword() != null && !utilisateur.getPassword().isBlank()
+                            && utilisateur.getNewpassword() != null && !utilisateur.getNewpassword().isBlank();
+                    if (veutChangerMdp) {
+                        if (!passwordEncoder.matches(utilisateur.getPassword(), p.getPassword())) {
+                            throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "Mot de passe actuel incorrect.");
+                        }
                         p.setPassword(passwordEncoder.encode(utilisateur.getNewpassword()));
                     }
-//                    else {
-//                    throw new ResponseStatusException(HttpStatus.FOUND,"Mot de passe actuel incorrect");
-//}
                     return utilisateurRepository.save(p);
                 }).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Votre id n'existe pas"));
+    }
+
+    private static boolean isAdminOrSuperadmin(Utilisateur u) {
+        if (u.getRole() == null || u.getRole().getNom() == null) {
+            return false;
+        }
+        String n = u.getRole().getNom().trim().toUpperCase();
+        return "SUPERADMIN".equals(n) || "ADMIN".equals(n);
     }
     
     

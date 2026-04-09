@@ -35,7 +35,7 @@ public class UtilisateurController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('PERSONNEL','SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
     @ResponseStatus(HttpStatus.OK)
     public List<UtilisateurDTO> Liste(){
         return utilisateurService.getAllUtilisateur();
@@ -49,7 +49,7 @@ public class UtilisateurController {
     }
 
     @PatchMapping("{id}")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('PERSONNEL') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','PERSONNEL','DIRECTEUR','DIRECTEUR_ODC','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
     @ResponseStatus(HttpStatus.CREATED)
     public Utilisateur Modifier(@PathVariable Long id, @RequestBody UtilisateurDTO utilisateur ){
         return utilisateurService.updateDTO(utilisateur,id);

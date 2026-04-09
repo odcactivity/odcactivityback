@@ -17,11 +17,15 @@ import com.odk.Entity.Courrier;
 import com.odk.Entity.ReponseCourrier;
 import com.odk.Entity.Utilisateur;
 import com.odk.Enum.StatutCourrier;
+import com.odk.Service.Interface.Service.CourrierDashboardService;
 import com.odk.Service.Interface.Service.CourrierService;
 import com.odk.Service.Interface.Service.ReponseCourrierService;
 import com.odk.Service.Interface.Service.UtilisateurService;
 import com.odk.Entity.Entite;
 import com.odk.dto.CourrierDTO;
+import com.odk.dto.CourrierMetadonneesDTO;
+import com.odk.dto.CourrierDashboardSerieDTO;
+import com.odk.dto.CourrierDashboardTotalsDTO;
 import com.odk.dto.EntiteDTO;
 import com.odk.dto.EntiteMapper;
 import com.odk.dto.ReponseCourrierDTO;
@@ -34,11 +38,17 @@ public class CourrierController {
     private final CourrierService courrierService;
     private final UtilisateurService utilisateurService;
     private final ReponseCourrierService reponseCourrierService;
+    private final CourrierDashboardService courrierDashboardService;
 
-    public CourrierController(CourrierService courrierService,UtilisateurService utilisateurService, ReponseCourrierService reponseCourrierService) {
+    public CourrierController(
+            CourrierService courrierService,
+            UtilisateurService utilisateurService,
+            ReponseCourrierService reponseCourrierService,
+            CourrierDashboardService courrierDashboardService) {
         this.courrierService = courrierService;
         this.utilisateurService = utilisateurService;
         this.reponseCourrierService = reponseCourrierService;
+        this.courrierDashboardService = courrierDashboardService;
     }
 
     /* ======================================================
@@ -49,6 +59,21 @@ public class CourrierController {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body("{\"error\": \"Validation échouée\", \"message\": \"" + e.getMessage() + "\"}");
+    }
+
+    @GetMapping("/dashboard/totaux")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    public CourrierDashboardTotalsDTO courrierDashboardTotaux(
+            @RequestParam(required = false) Long structureId) {
+        return courrierDashboardService.totaux(structureId);
+    }
+
+    @GetMapping("/dashboard/serie")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    public CourrierDashboardSerieDTO courrierDashboardSerie(
+            @RequestParam(defaultValue = "semaine") String periode,
+            @RequestParam(required = false) Long structureId) {
+        return courrierDashboardService.serie(periode, structureId);
     }
 
     /* ======================================================
@@ -138,6 +163,13 @@ public class CourrierController {
     @PreAuthorize("hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Courrier> annulerCourrierDirecteurOdc(@PathVariable Long id) {
         return ResponseEntity.ok(courrierService.annulerCourrierParDirecteurOdc(id));
+    }
+
+    /** Pièce jointe en consultation seule (sans changer le statut du courrier). */
+    @GetMapping("/odc-directeur/{id}/fichier")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<InputStreamResource> fichierValidationDirecteurOdc(@PathVariable Long id) throws IOException {
+        return courrierService.telechargerPourValidationDirecteurOdc(id);
     }
 
     @GetMapping("/structure-directeur/en-attente-validation")
@@ -300,6 +332,24 @@ public class CourrierController {
     public ResponseEntity<Void> supprimerCourrier(@PathVariable Long id) {
         courrierService.supprimerCourrier(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/structure-directeur/{id}")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Void> supprimerCourrierStructureDirecteur(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        courrierService.supprimerCourrierParDirecteurStructure(id, utilisateur);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/metadonnees")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
+    public ResponseEntity<Courrier> patchMetadonneesCourrier(
+            @PathVariable Long id,
+            @RequestBody CourrierMetadonneesDTO dto,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.mettreAJourMetadonneesCourrier(id, dto, utilisateur));
     }
 
     /* ======================================================
