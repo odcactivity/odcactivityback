@@ -6,6 +6,7 @@ import com.odk.Entity.Etape;
 import com.odk.Entity.Salle;
 import com.odk.Entity.TypeActivite;
 import com.odk.Entity.Utilisateur;
+import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import java.util.ArrayList;
 import lombok.Data;
@@ -27,6 +28,9 @@ public class ActiviteDTO {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private Date dateFin;
     private Statut statut;
+    private DecisionDirecteurOdc directeurOdcDecision;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private Date directeurOdcTraiteLe;
     private String lieu;
     private String description;
     private int objectifParticipation;

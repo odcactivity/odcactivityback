@@ -72,6 +72,18 @@ public class ActiviteController {
         return activiteMapper.listeActivite(activiteService.listerEnAttenteValidationDirecteurOdc());
     }
 
+    @GetMapping("/directeur-odc/historique-validees")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public List<ActiviteDTO> historiqueValideesDirecteurOdc() {
+        return activiteMapper.listeActivite(activiteService.listerHistoriqueValideesParDirecteurOdc());
+    }
+
+    @GetMapping("/directeur-odc/historique-refusees")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public List<ActiviteDTO> historiqueRefuseesDirecteurOdc() {
+        return activiteMapper.listeActivite(activiteService.listerHistoriqueRefuseesParDirecteurOdc());
+    }
+
     @PostMapping("/{id}/valider-directeur-odc")
     @PreAuthorize("hasRole('DIRECTEUR_ODC')")
     public ActiviteDTO validerDirecteurOdc(@PathVariable Long id) {

@@ -33,6 +33,7 @@ public class ReponseCourrierService {
     private final ReponseCourrierRepository reponseCourrierRepository;
     private final CourrierRepository courrierRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final CourrierService courrierService;
     private final EmailService emailService;
     private final String uploadDir = "uploads/reponses";
 
@@ -204,9 +205,28 @@ public class ReponseCourrierService {
      */
     private void envoyerNotificationsReponse(Courrier courrier, ReponseCourrierDTO dto) {
         try {
+            if (courrierService.estFluxExterneSortantAvecOrigine(courrier)) {
+                courrierService.notifierStructureOrigineReponseCourrierExterne(
+                        courrier.getId(), dto.getEmail(), dto.getObjet(), dto.getMessage());
+                if (courrier.getExpediteur() != null && courrier.getExpediteur().contains("@")) {
+                    String emailBody = buildEmailBodyExpediteur(
+                            courrier.getNumero(),
+                            courrier.getObjet(),
+                            dto.getEmail(),
+                            dto.getMessage());
+                    emailService.sendSimpleEmail(
+                            courrier.getExpediteur(),
+                            "Votre courrier a reçu une réponse : " + courrier.getNumero(),
+                            emailBody);
+                }
+                log.info("Notifications réponse externe (structure d'origine) pour le courrier {}", courrier.getId());
+                return;
+            }
+
             // 1. Email au responsable de l'entité du courrier
-            if (courrier.getEntite().getResponsable() != null && 
-                courrier.getEntite().getResponsable().getEmail() != null) {
+            if (courrier.getEntite() != null
+                    && courrier.getEntite().getResponsable() != null
+                    && courrier.getEntite().getResponsable().getEmail() != null) {
                 
                 String emailBody = buildEmailBodyReponse(
                     courrier.getExpediteur(),

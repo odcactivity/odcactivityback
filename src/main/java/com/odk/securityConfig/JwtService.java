@@ -105,6 +105,10 @@ public class JwtService {
         claims.put("genre", utilisateur.getGenre());
         claims.put("email", utilisateur.getEmail());
         claims.put("phone", utilisateur.getPhone());
+        if (utilisateur.getRole() == null || utilisateur.getRole().getNom() == null) {
+            throw new IllegalStateException(
+                    "Utilisateur sans rôle (role_id) — impossible d'émettre un JWT. Vérifier la ligne utilisateur en base.");
+        }
         claims.put("role", utilisateur.getRole().getNom());
         claims.put(Claims.EXPIRATION, new Date(expirationTime));
         claims.put(Claims.SUBJECT, utilisateur.getEmail());

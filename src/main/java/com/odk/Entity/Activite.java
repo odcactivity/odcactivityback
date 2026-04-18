@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import com.odk.jackson.JpaRefIdDeserializers;
 import jakarta.persistence.*;
@@ -34,6 +35,14 @@ public class Activite {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private Date dateFin;
     private Statut statut;
+
+    /** Renseigné lorsque le directeur ODC valide ou refuse (historique). */
+    @Enumerated(EnumType.STRING)
+    private DecisionDirecteurOdc directeurOdcDecision;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date directeurOdcTraiteLe;
+
     private String lieu;
     @Column(columnDefinition = "TEXT")
     private String description;

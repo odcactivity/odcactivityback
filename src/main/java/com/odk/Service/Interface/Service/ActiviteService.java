@@ -4,6 +4,7 @@ import com.odk.Entity.Activite;
 import com.odk.Entity.Etape;
 import com.odk.Entity.Salle;
 import com.odk.Entity.Utilisateur;
+import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import com.odk.Repository.ActiviteRepository;
 import com.odk.Repository.EtapeRepository;
@@ -249,6 +250,8 @@ public void envoiMail(Activite activiteCree){
                     "Cette activité n'est pas en attente de validation par le directeur ODC.");
         }
         a.setStatut(Statut.En_Attente);
+        a.setDirecteurOdcDecision(DecisionDirecteurOdc.VALIDEE);
+        a.setDirecteurOdcTraiteLe(new Date());
         a.mettreAJourStatut();
         Activite saved = activiteRepository.save(a);
         envoiMail(saved);
@@ -264,6 +267,8 @@ public void envoiMail(Activite activiteCree){
                     "Cette activité n'est pas en attente de validation par le directeur ODC.");
         }
         a.setStatut(Statut.Rejetee);
+        a.setDirecteurOdcDecision(DecisionDirecteurOdc.REFUSEE);
+        a.setDirecteurOdcTraiteLe(new Date());
         Activite saved = activiteRepository.save(a);
         if (saved.getCreatedBy() != null && saved.getCreatedBy().getEmail() != null) {
             String sujet = "[ODC Activité] Activité non validée : " + saved.getNom();
@@ -277,6 +282,14 @@ public void envoiMail(Activite activiteCree){
 
     public List<Activite> listerEnAttenteValidationDirecteurOdc() {
         return activiteRepository.findByStatut(Statut.En_Validation_Directeur_ODC);
+    }
+
+    public List<Activite> listerHistoriqueValideesParDirecteurOdc() {
+        return activiteRepository.findByDirecteurOdcDecisionOrderByDirecteurOdcTraiteLeDesc(DecisionDirecteurOdc.VALIDEE);
+    }
+
+    public List<Activite> listerHistoriqueRefuseesParDirecteurOdc() {
+        return activiteRepository.findByDirecteurOdcDecisionOrderByDirecteurOdcTraiteLeDesc(DecisionDirecteurOdc.REFUSEE);
     }
 
     @Override

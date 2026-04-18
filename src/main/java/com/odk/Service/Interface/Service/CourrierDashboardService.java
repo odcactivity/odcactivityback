@@ -11,14 +11,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.text.Normalizer;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.odk.Entity.Courrier;
 import com.odk.Entity.Entite;
+import com.odk.Entity.Utilisateur;
 import com.odk.Enum.StatutCourrier;
+import com.odk.Enum.TypeEntite;
 import com.odk.Repository.CourrierRepository;
+import com.odk.Repository.EntiteOdcRepository;
 import com.odk.dto.CourrierDashboardBucketDTO;
 import com.odk.dto.CourrierDashboardDetailRowDTO;
 import com.odk.dto.CourrierDashboardSerieDTO;
@@ -50,17 +55,22 @@ public class CourrierDashboardService {
     }
 
     private final CourrierRepository courrierRepository;
+    private final EntiteOdcRepository entiteOdcRepository;
 
-    public CourrierDashboardTotalsDTO totaux(Long structureId) {
+    @Value("${app.courrier.dcire-direction-id:0}")
+    private long configuredDcireDirectionId;
+
+    public CourrierDashboardTotalsDTO totaux(Long structureId, Utilisateur principal) {
+        Long effectiveStructureId = resolveEffectiveStructureId(structureId, principal);
         List<Courrier> list = loadCourriers();
-        list.removeIf(c -> !matchesStructureFilter(c, structureId));
+        applyCourrierDashboardStructureFilter(list, effectiveStructureId, principal);
         EnumMap<Cat, Long> m = new EnumMap<>(Cat.class);
         for (Cat c : Cat.values()) {
             m.put(c, 0L);
         }
         for (Courrier c : list) {
             try {
-                categorie(c).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+                categorie(c, effectiveStructureId).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
             } catch (RuntimeException ex) {
                 // Ne bloque pas le dashboard pour un courrier incohérent.
             }
@@ -73,10 +83,11 @@ public class CourrierDashboardService {
                 m.get(Cat.valide));
     }
 
-    public CourrierDashboardSerieDTO serie(String periode, Long structureId) {
+    public CourrierDashboardSerieDTO serie(String periode, Long structureId, Utilisateur principal) {
         String p = periode == null ? "semaine" : periode.trim().toLowerCase(Locale.ROOT);
+        Long effectiveStructureId = resolveEffectiveStructureId(structureId, principal);
         List<Courrier> list = loadCourriers();
-        list.removeIf(c -> !matchesStructureFilter(c, structureId));
+        applyCourrierDashboardStructureFilter(list, effectiveStructureId, principal);
 
         LocalDate today = LocalDate.now(TZ);
         List<Bucket> buckets = switch (p) {
@@ -101,7 +112,7 @@ public class CourrierDashboardService {
                     if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
                         continue;
                     }
-                    Optional<Cat> cat = categorie(c);
+                    Optional<Cat> cat = categorie(c, effectiveStructureId);
                     if (cat.isEmpty()) {
                         continue;
                     }
@@ -165,6 +176,132 @@ public class CourrierDashboardService {
         return false;
     }
 
+    private void applyCourrierDashboardStructureFilter(List<Courrier> list, Long effectiveStructureId, Utilisateur principal) {
+        if (isDcireHubDirectorRole(principal)) {
+            list.removeIf(c -> !matchesDcireHubDashboard(c, effectiveStructureId));
+        } else {
+            list.removeIf(c -> !matchesStructureFilter(c, effectiveStructureId));
+        }
+    }
+
+    /**
+     * Directeur historique « DCIRE » (rôle {@code DIRECTEUR}) ou rôle explicite {@code DCIRE}.
+     */
+    private boolean isDcireHubDirectorRole(Utilisateur principal) {
+        if (principal == null || principal.getRole() == null || principal.getRole().getNom() == null) {
+            return false;
+        }
+        String role = principal.getRole().getNom().trim().toUpperCase(Locale.ROOT);
+        return "DIRECTEUR".equals(role) || "DCIRE".equals(role);
+    }
+
+    /**
+     * Stats courrier côté hub DCIRE uniquement : détenteur = direction DCIRE (ou service directement sous elle),
+     * ou origine / direction initiale = DCIRE. On n’utilise pas {@link #entiteLieADirection(Entite, Long)} sur le
+     * détenteur, sinon tout courrier d’une direction « fille » (ODC, Fondation, RSE, DCI) remonterait au parent DCIRE
+     * en base et fausserait les totaux (même chiffres que le dash admin ODC).
+     */
+    private boolean matchesDcireHubDashboard(Courrier c, Long dcireId) {
+        if (dcireId == null) {
+            return false;
+        }
+        if (c.getEntite() != null && dcireId.equals(c.getEntite().getId())) {
+            return true;
+        }
+        if (entiteServiceDirectementSousDirection(c.getEntite(), dcireId)) {
+            return true;
+        }
+        if (c.getStructureOrigine() != null && dcireId.equals(c.getStructureOrigine().getId())) {
+            return true;
+        }
+        if (c.getDirectionInitial() != null && dcireId.equals(c.getDirectionInitial().getId())) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean entiteServiceDirectementSousDirection(Entite e, Long directionId) {
+        if (e == null || directionId == null) {
+            return false;
+        }
+        if (e.getType() != TypeEntite.SERVICE) {
+            return false;
+        }
+        Entite p = e.getParent();
+        return p != null && directionId.equals(p.getId());
+    }
+
+    private Long resolveEffectiveStructureId(Long requestedStructureId, Utilisateur principal) {
+        if (principal == null) {
+            return requestedStructureId;
+        }
+        String role = "";
+        if (principal.getRole() != null && principal.getRole().getNom() != null) {
+            role = principal.getRole().getNom().trim().toUpperCase(Locale.ROOT);
+        }
+        Long myStructureId = principal.getEntite() != null ? principal.getEntite().getId() : null;
+        // Directeur ODC : même lecture que l’admin ODC pour les stats courrier.
+        // Si un filtre structure ODC est demandé, on le respecte ; sinon on retombe sur sa direction.
+        if ("DIRECTEUR_ODC".equals(role)) {
+            if (requestedStructureId != null) {
+                return requestedStructureId;
+            }
+            if (myStructureId != null) {
+                return myStructureId;
+            }
+        }
+        /*
+         * Hub DCIRE (rôle DIRECTEUR historique, ou DCIRE explicite) : les stats courrier doivent refléter
+         * uniquement le périmètre DCIRE (émis / reçus / etc. au hub), jamais l’ensemble ODC+Fondation+RSE+DCI.
+         * Si le compte a une entité « trop large » (ex. Orange Digital Center), utiliser myStructureId
+         * faussait les totaux (même affichage que l’admin sur « Toutes »).
+         */
+        if ("DIRECTEUR".equals(role) || "DCIRE".equals(role)) {
+            Long dcireId = resolveDcireDirectionIdForDashboard();
+            if (dcireId != null) {
+                return dcireId;
+            }
+            if (myStructureId != null) {
+                return myStructureId;
+            }
+        }
+        return requestedStructureId;
+    }
+
+    /**
+     * Identifiant de la direction « hub » DCIRE (config ou heuristique nom), pour filtrer les stats courrier.
+     */
+    private Long resolveDcireDirectionIdForDashboard() {
+        if (configuredDcireDirectionId > 0) {
+            return entiteOdcRepository.findById(configuredDcireDirectionId)
+                    .filter(e -> e.getType() == TypeEntite.DIRECTION)
+                    .map(Entite::getId)
+                    .orElse(null);
+        }
+        return entiteOdcRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(this::nomIndiqueDcire)
+                .map(Entite::getId)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean nomIndiqueDcire(Entite e) {
+        if (e == null || e.getNom() == null) {
+            return false;
+        }
+        String n = normalizeNomEntitePourDcire(e.getNom());
+        if (n.contains("DCIRE")) {
+            return true;
+        }
+        return n.replace('-', ' ').contains("DCI RE");
+    }
+
+    private static String normalizeNomEntitePourDcire(String nom) {
+        String decomposed = Normalizer.normalize(nom, Normalizer.Form.NFD);
+        String sansAccents = decomposed.replaceAll("\\p{M}+", "");
+        return sansAccents.toUpperCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    }
+
     private LocalDate receptionDate(Courrier c) {
         if (c.getDateReception() == null) {
             return null;
@@ -172,10 +309,14 @@ public class CourrierDashboardService {
         return c.getDateReception().toInstant().atZone(TZ).toLocalDate();
     }
 
-    private Optional<Cat> categorie(Courrier c) {
+    private Optional<Cat> categorie(Courrier c, Long structureId) {
         StatutCourrier s = c.getStatut();
         if (s == null || s == StatutCourrier.ARCHIVER) {
             return Optional.empty();
+        }
+        // "Émis" = courrier parti de la structure courante et déjà sorti de son portefeuille courant.
+        if (structureId != null && estCourrierEmisParStructure(c, structureId)) {
+            return Optional.of(Cat.emis);
         }
         if (s == StatutCourrier.REPONDU) {
             return Optional.of(Cat.repondu);
@@ -193,6 +334,17 @@ public class CourrierDashboardService {
             return Optional.of(Cat.emis);
         }
         return Optional.empty();
+    }
+
+    private boolean estCourrierEmisParStructure(Courrier c, Long structureId) {
+        if (structureId == null) {
+            return false;
+        }
+        boolean origineMatch = entiteLieADirection(c.getStructureOrigine(), structureId);
+        if (!origineMatch) {
+            return false;
+        }
+        return !entiteLieADirection(c.getEntite(), structureId);
     }
 
     private CourrierDashboardDetailRowDTO detailRow(Courrier c, Cat cat) {
@@ -229,17 +381,22 @@ public class CourrierDashboardService {
     }
 
     private static String structureLabel(Courrier c) {
-        String n1 = safeNom(c.getEntite());
-        if (n1 != null) {
-            return n1;
+        String origine = safeNom(c.getStructureOrigine());
+        if (origine == null) {
+            origine = safeNom(c.getDirectionInitial());
         }
-        String n2 = safeNom(c.getStructureOrigine());
-        if (n2 != null) {
-            return n2;
+        String destination = safeNom(c.getEntite());
+        if (origine != null && destination != null) {
+            if (origine.equalsIgnoreCase(destination)) {
+                return origine;
+            }
+            return origine + " -> " + destination;
         }
-        String n3 = safeNom(c.getDirectionInitial());
-        if (n3 != null) {
-            return n3;
+        if (origine != null) {
+            return origine;
+        }
+        if (destination != null) {
+            return destination;
         }
         return "—";
     }

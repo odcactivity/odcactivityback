@@ -62,25 +62,27 @@ public class CourrierController {
     }
 
     @GetMapping("/dashboard/totaux")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC')")
     public CourrierDashboardTotalsDTO courrierDashboardTotaux(
-            @RequestParam(required = false) Long structureId) {
-        return courrierDashboardService.totaux(structureId);
+            @RequestParam(required = false) Long structureId,
+            @AuthenticationPrincipal Utilisateur principal) {
+        return courrierDashboardService.totaux(structureId, principal);
     }
 
     @GetMapping("/dashboard/serie")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC')")
     public CourrierDashboardSerieDTO courrierDashboardSerie(
             @RequestParam(defaultValue = "semaine") String periode,
-            @RequestParam(required = false) Long structureId) {
-        return courrierDashboardService.serie(periode, structureId);
+            @RequestParam(required = false) Long structureId,
+            @AuthenticationPrincipal Utilisateur principal) {
+        return courrierDashboardService.serie(periode, structureId, principal);
     }
 
     /* ======================================================
      *  PARTIE 1 : RÉCEPTION / ENREGISTREMENT DU COURRIER
      * ====================================================== */
     @PostMapping("/reception")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Courrier> receptionCourrier(
             @RequestParam String numero,
             @RequestParam String objet,
@@ -104,7 +106,7 @@ public class CourrierController {
      *  PARTIE 2 : IMPUTATION PAR LE DIRECTEUR
      * ====================================================== */
     @GetMapping("/odc/directions-emission")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<List<EntiteDTO>> listerDirectionsEmissionOdc() {
         List<Entite> dirs = courrierService.listerDirectionsOdcPourBrouillon();
         return ResponseEntity.ok(
@@ -112,7 +114,7 @@ public class CourrierController {
     }
 
     @PostMapping("/odc/brouillon")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Courrier> brouillonOdc(
             @RequestParam Long odcDirectionId,
             @RequestParam String numero,
@@ -140,7 +142,7 @@ public class CourrierController {
     }
 
     @PostMapping("/odc/{id}/resoumettre-revision")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Courrier> resoumettreRevision(@PathVariable Long id) {
         return ResponseEntity.ok(courrierService.resoumettreApresRevisionAdmin(id));
     }
@@ -230,8 +232,27 @@ public class CourrierController {
                 courrierService.enregistrerCourrierInterneDepuisMaStructure(cibleDirectionId, dto, utilisateur));
     }
 
+    @PostMapping("/structure-directeur/courrier-externe")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> courrierExterneDepuisStructure(
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam String expediteur,
+            @RequestParam(required = false) String externePrecision,
+            @RequestParam(required = false) MultipartFile fichier,
+            @AuthenticationPrincipal Utilisateur utilisateur
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur);
+        dto.setExternePrecision(externePrecision);
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(courrierService.enregistrerCourrierExterneDepuisMaStructure(dto, utilisateur));
+    }
+
     @PostMapping("/division-interne")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') "
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
             + "or hasRole('DIRECTEUR_FONDATION') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI')")
     public ResponseEntity<Courrier> courrierInterneDivision(
             @RequestParam Long origineDirectionId,
@@ -251,7 +272,7 @@ public class CourrierController {
     }
 
     @GetMapping("/odc/{directionId}")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<List<Courrier>> listerPourOdc(
             @PathVariable Long directionId,
             @RequestParam(defaultValue = "OPERATIONNEL") String vue
@@ -292,8 +313,16 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.transmettreVersOdc(id, odcDirectionId));
     }
 
+    @PostMapping("/dcire/{id}/valider-expedition-externe")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> validerExpeditionExterneDcire(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.validerExpeditionExterneParDcire(id, utilisateur));
+    }
+
     @PutMapping("/{id}/imputer")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Courrier> imputerCourrier(
             @PathVariable Long id,
             @RequestParam Long entiteCibleId,
@@ -328,7 +357,7 @@ public class CourrierController {
     }
 
     @DeleteMapping("/delete/{id}")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Void> supprimerCourrier(@PathVariable Long id) {
         courrierService.supprimerCourrier(id);
         return ResponseEntity.noContent().build();
@@ -344,7 +373,7 @@ public class CourrierController {
     }
 
     @PatchMapping("/{id}/metadonnees")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
     public ResponseEntity<Courrier> patchMetadonneesCourrier(
             @PathVariable Long id,
             @RequestBody CourrierMetadonneesDTO dto,

@@ -135,15 +135,19 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Utilisateur DIRECTEUR_ODC existe déjà !");
         }
 
-        creerDirecteurStructureSiEntiteExiste(
+        creerDirecteurStructure(
                 "DIRECTEUR_FONDATION", "directeurFondation@gmail.com", "Fondation", "FONDATION");
-        creerDirecteurStructureSiEntiteExiste(
+        creerDirecteurStructure(
                 "DIRECTEUR_RSE", "directeurRSE@gmail.com", "RSE", "RSE");
-        creerDirecteurStructureSiEntiteExiste(
+        creerDirecteurStructure(
                 "DIRECTEUR_DCI", "directeurDCI@gmail.com", "DCI", "DCI");
     }
 
-    private void creerDirecteurStructureSiEntiteExiste(
+    /**
+     * Associe une direction existante si le nom matche ; sinon crée quand même le compte (entité null)
+     * pour permettre la connexion après reset BDD — rattachement entité possible depuis l’admin.
+     */
+    private void creerDirecteurStructure(
             String roleNom, String email, String prenom, String motClefDirection) {
         Role role = roleRepository
                 .findByNom(roleNom)
@@ -152,33 +156,13 @@ public class DataInitializer implements CommandLineRunner {
                     r.setNom(roleNom);
                     return roleRepository.save(r);
                 });
-        Optional<Entite> entOpt = entiteOdcRepository.findByType(TypeEntite.DIRECTION).stream()
-                .filter(e -> {
-                    String n = e.getNom() != null ? e.getNom().toUpperCase().replaceAll("\\s+", " ").trim() : "";
-                    if (n.contains("DCIRE")) {
-                        return false;
-                    }
-                    if ("FONDATION".equals(motClefDirection)) {
-                        return n.contains("FONDATION");
-                    }
-                    if ("RSE".equals(motClefDirection)) {
-                        return n.contains("RSE");
-                    }
-                    if ("DCI".equals(motClefDirection)) {
-                        return n.contains("DCI") && !n.contains("DCIRE");
-                    }
-                    return false;
-                })
-                .findFirst();
-        if (entOpt.isEmpty()) {
-            System.out.println("Init : aucune direction « " + motClefDirection + " » — compte " + email + " non créé.");
-            return;
-        }
-        Entite entite = entOpt.get();
         if (utilisateurRepository.findByEmail(email).isPresent()) {
             System.out.println("Utilisateur " + roleNom + " existe déjà !");
             return;
         }
+        Optional<Entite> entOpt = entiteOdcRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(e -> directionMatcheStructure(e, motClefDirection))
+                .findFirst();
         Utilisateur u = new Utilisateur();
         u.setNom(roleNom.replace("DIRECTEUR_", ""));
         u.setPrenom(prenom);
@@ -187,8 +171,35 @@ public class DataInitializer implements CommandLineRunner {
         u.setEmail(email);
         u.setPassword(passwordEncoder.encode("motdepasse123"));
         u.setRole(role);
-        u.setEntite(entite);
+        if (entOpt.isPresent()) {
+            u.setEntite(entOpt.get());
+            System.out.println("Utilisateur " + roleNom + " (" + email + ") créé — entité : " + entOpt.get().getNom());
+        } else {
+            System.out.println(
+                    "Init : aucune direction « "
+                            + motClefDirection
+                            + " » — compte "
+                            + email
+                            + " créé sans entité (rattacher une direction en admin si besoin).");
+        }
         utilisateurRepository.save(u);
-        System.out.println("Utilisateur " + roleNom + " (" + email + ") créé — entité : " + entite.getNom());
+    }
+
+    private static boolean directionMatcheStructure(Entite e, String motClefDirection) {
+        String n = e.getNom() != null ? e.getNom().toUpperCase().replaceAll("\\s+", " ").trim() : "";
+        if (n.contains("DCIRE")) {
+            return false;
+        }
+        if ("FONDATION".equals(motClefDirection)) {
+            return n.contains("FONDATION");
+        }
+        if ("RSE".equals(motClefDirection)) {
+            return n.contains("RSE")
+                    || (n.contains("RESPONSABIL") && n.contains("SOCIALE"));
+        }
+        if ("DCI".equals(motClefDirection)) {
+            return n.contains("DCI") && !n.contains("DCIRE");
+        }
+        return false;
     }
 }

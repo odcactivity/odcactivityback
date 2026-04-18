@@ -6,6 +6,7 @@ import com.lowagie.text.pdf.PdfWriter;
 import com.odk.Entity.Activite;
 import com.odk.Entity.Entite;
 import com.odk.Service.Interface.Service.RapportActiviteService;
+import com.odk.dto.RapportActiviteApercuDTO;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -20,6 +21,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/rapport-global")
@@ -28,6 +30,36 @@ public class RapportGlobalController {
 
     private final RapportActiviteService rapportActiviteService;
     private static final SimpleDateFormat DF = new SimpleDateFormat("yyyy-MM-dd");
+
+    @GetMapping("/activites-apercu")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public List<RapportActiviteApercuDTO> apercuActivites(
+            @RequestParam(required = false) Long entiteId,
+            @RequestParam(required = false) Long activiteId,
+            @RequestParam int annee,
+            @RequestParam(required = false) Integer mois
+    ) {
+        return rapportActiviteService.listerPourExport(entiteId, activiteId, annee, mois).stream()
+                .map(this::toApercu)
+                .collect(Collectors.toList());
+    }
+
+    private RapportActiviteApercuDTO toApercu(Activite a) {
+        String entiteNom = "";
+        if (a.getEntite() != null && a.getEntite().getNom() != null) {
+            entiteNom = a.getEntite().getNom();
+        }
+        return new RapportActiviteApercuDTO(
+                a.getId(),
+                a.getNom(),
+                a.getTitre(),
+                a.getDateDebut(),
+                a.getDateFin(),
+                a.getStatut(),
+                entiteNom,
+                a.getLieu()
+        );
+    }
 
     @GetMapping(value = "/activites.csv", produces = "text/csv;charset=UTF-8")
     @PreAuthorize("hasRole('DIRECTEUR_ODC')")

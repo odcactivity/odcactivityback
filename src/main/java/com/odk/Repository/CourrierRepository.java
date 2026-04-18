@@ -57,6 +57,13 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     List<Courrier> findByEntiteIdOrderByDateReceptionDesc(Long entiteId);
 
+    @Query("SELECT DISTINCT c FROM Courrier c "
+            + "LEFT JOIN FETCH c.entite "
+            + "LEFT JOIN FETCH c.structureOrigine "
+            + "LEFT JOIN FETCH c.directionInitial "
+            + "WHERE c.entite.id = :eid ORDER BY c.dateReception DESC")
+    List<Courrier> findPourHubDcire(@Param("eid") Long eid);
+
     List<Courrier> findByStructureOrigineIdOrderByDateReceptionDesc(Long structureOrigineId);
 
     @Query("SELECT DISTINCT c FROM Courrier c WHERE "

@@ -1,6 +1,7 @@
 package com.odk.Repository;
 
 import com.odk.Entity.Activite;
+import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -92,6 +93,8 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
     );
 
     List<Activite> findByStatut(Statut statut);
+
+    List<Activite> findByDirecteurOdcDecisionOrderByDirecteurOdcTraiteLeDesc(DecisionDirecteurOdc decision);
 
     @Query("SELECT a FROM Activite a WHERE (:entiteId IS NULL OR a.entite.id = :entiteId) "
             + "AND (:activiteId IS NULL OR a.id = :activiteId) "
