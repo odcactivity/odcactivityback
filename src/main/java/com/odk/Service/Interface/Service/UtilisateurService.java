@@ -42,9 +42,10 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        String normalizedEmail = username == null ? "" : username.trim().toLowerCase();
         return utilisateurRepository
-                .findByEmail(username)
-                .orElseThrow(() -> new UsernameNotFoundException("Aucun utilisateur pour l'email : " + username));
+                .findByEmail(normalizedEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("Aucun utilisateur pour l'email : " + normalizedEmail));
     }
 
     @Override
