@@ -1090,7 +1090,7 @@ public class CourrierService {
             throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
         }
 
-        Entite dcire = resolveDcireDirection();
+        Entite dcire = resolveDcireDirectionOptional().orElse(null);
         Courrier courrier = new Courrier();
         courrier.setNumero(dto.getNumero());
         courrier.setObjet(dto.getObjet());
@@ -1121,8 +1121,9 @@ public class CourrierService {
 
     public Courrier transmettreVersOdc(Long courrierId, Long odcDirectionId) {
         Courrier courrier = getCourrier(courrierId);
-        Entite dcire = resolveDcireDirection();
-        if (courrier.getEntite() == null || !Objects.equals(dcire.getId(), courrier.getEntite().getId())) {
+        Entite dcire = resolveDcireDirectionOptional().orElse(null);
+        if (dcire != null
+                && (courrier.getEntite() == null || !Objects.equals(dcire.getId(), courrier.getEntite().getId()))) {
             throw new CourrierValidationException("Le courrier doit être présent sur la direction DCIRE pour être transmis à l'ODC.");
         }
         if (courrier.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE) {
