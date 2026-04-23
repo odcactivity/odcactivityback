@@ -247,6 +247,10 @@ public class CourrierDashboardService {
             return Optional.of(Cat.valide);
         }
         if (s == StatutCourrier.TRANSMIS_DCIRE) {
+            // Pour le hub DCIRE, TRANSMIS_DCIRE correspond à un courrier reçu au hub.
+            if (scope == DashboardScope.DCIRE) {
+                return Optional.of(Cat.recu);
+            }
             return Optional.of(Cat.emis);
         }
         // DCIRE : on ne force pas "emis" autrement
