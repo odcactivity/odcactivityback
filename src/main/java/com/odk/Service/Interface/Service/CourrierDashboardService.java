@@ -213,13 +213,23 @@ public class CourrierDashboardService {
             Courrier c,
             DashboardScope scope,
             Map<Long, List<HistoriqueCourrier>> histByCourrierId) {
+        StatutCourrier statutCourant = c != null ? c.getStatut() : null;
+        // La source de vérité doit rester le statut courant du courrier
+        // (l'historique peut être incomplet sur certains anciens enregistrements).
+        if (statutCourant == StatutCourrier.ARCHIVER) {
+            return Optional.empty();
+        }
+        if (statutCourant == StatutCourrier.REPONDU) {
+            return Optional.of(Cat.repondu);
+        }
+
         List<HistoriqueCourrier> hist = c != null && c.getId() != null ? histByCourrierId.get(c.getId()) : null;
         StatutCourrier s = null;
         if (hist != null && !hist.isEmpty()) {
             s = hist.get(hist.size() - 1).getStatut();
         }
         if (s == null) {
-            s = c != null ? c.getStatut() : null;
+            s = statutCourant;
         }
         if (s == null || s == StatutCourrier.ARCHIVER) {
             return Optional.empty();
