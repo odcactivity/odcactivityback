@@ -357,9 +357,11 @@ public class CourrierController {
     }
 
     @DeleteMapping("/delete/{id}")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
-    public ResponseEntity<Void> supprimerCourrier(@PathVariable Long id) {
-        courrierService.supprimerCourrier(id);
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC') or hasRole('DIRECTEUR')")
+    public ResponseEntity<Void> supprimerCourrier(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        courrierService.supprimerCourrierParDirecteurStructure(id, utilisateur);
         return ResponseEntity.noContent().build();
     }
 

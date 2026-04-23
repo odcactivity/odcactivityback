@@ -396,8 +396,14 @@ public class CourrierService {
      */
     @Transactional(readOnly = true)
     public List<Courrier> listerPourDcire() {
-        Entite dcire = resolveDcireDirection();
-        return courrierRepository.findPourHubDcire(dcire.getId());
+        Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
+        if (dcireOpt.isPresent()) {
+            return courrierRepository.findPourHubDcire(dcireOpt.get().getId());
+        }
+        // Mode "DCIRE = profil" : pas d’entité hub dédiée => on limite strictement aux flux externes.
+        return courrierRepository.findAllOrderByDateReceptionDesc().stream()
+                .filter(c -> c != null && c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE)
+                .toList();
     }
 
     public List<Courrier> listerPourOdc(Long directionId, String vue) {
@@ -479,10 +485,17 @@ public class CourrierService {
      * Directions autorisées pour un brouillon ODC (même règles que {@link #creerBrouillonOdc}).
      */
     public List<Entite> listerDirectionsOdcPourBrouillon() {
-        return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+        List<Entite> list = entiteRepository.findByType(TypeEntite.DIRECTION).stream()
                 .filter(e -> !nomIndiqueDcire(e))
                 .filter(this::estDirectionOdc)
                 .toList();
+        // Fallback: si l’heuristique de nommage ne détecte rien, on évite une liste vide.
+        if (list == null || list.isEmpty()) {
+            return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                    .filter(e -> !nomIndiqueDcire(e))
+                    .toList();
+        }
+        return list;
     }
 
     public Courrier creerBrouillonOdc(Long odcDirectionId, CourrierDTO dto) throws IOException {
@@ -651,8 +664,10 @@ public class CourrierService {
         Entite ancienne = courrier.getEntite();
 
         if (dest == DestinataireCourrierOdc.EXTERNE) {
-            Entite dcire = resolveDcireDirection();
-            courrier.setEntite(dcire);
+            Entite dcire = resolveDcireDirectionOptional().orElse(null);
+            if (dcire != null) {
+                courrier.setEntite(dcire);
+            }
             courrier.setStatut(StatutCourrier.TRANSMIS_DCIRE);
             courrierRepository.save(courrier);
 
@@ -790,7 +805,7 @@ public class CourrierService {
             throw new CourrierValidationException("Erreur lors de la sauvegarde du fichier : " + e.getMessage(), e);
         }
 
-        Entite dcire = resolveDcireDirection();
+        Entite dcire = resolveDcireDirectionOptional().orElse(null);
         Courrier courrier = new Courrier();
         courrier.setNumero(dto.getNumero());
         courrier.setObjet(dto.getObjet());
@@ -831,13 +846,7 @@ public class CourrierService {
     @Transactional
     public Courrier validerExpeditionExterneParDcire(Long courrierId, Utilisateur principal) {
         Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
-        if (u.getEntite() == null || u.getEntite().getId() == null) {
-            throw new CourrierValidationException("Profil sans direction.");
-        }
-        Entite dcire = resolveDcireDirection();
-        if (!Objects.equals(dcire.getId(), u.getEntite().getId())) {
-            throw new CourrierValidationException("Action réservée au hub.");
-        }
+        Entite dcire = resolveDcireDirectionOptional().orElse(null);
         if (u.getRole() == null || !"DIRECTEUR".equalsIgnoreCase(u.getRole().getNom().trim())) {
             throw new CourrierValidationException("Action réservée au directeur du hub.");
         }
@@ -845,8 +854,16 @@ public class CourrierService {
         if (courrier.getStatut() != StatutCourrier.TRANSMIS_DCIRE) {
             throw new CourrierValidationException("Ce courrier n'est pas en attente d'accusé de réception hub.");
         }
-        if (courrier.getEntite() == null || !Objects.equals(dcire.getId(), courrier.getEntite().getId())) {
-            throw new CourrierValidationException("Le courrier n'est pas sur le hub.");
+        if (dcire != null) {
+            if (u.getEntite() == null || u.getEntite().getId() == null) {
+                throw new CourrierValidationException("Profil sans direction.");
+            }
+            if (!Objects.equals(dcire.getId(), u.getEntite().getId())) {
+                throw new CourrierValidationException("Action réservée au hub.");
+            }
+            if (courrier.getEntite() == null || !Objects.equals(dcire.getId(), courrier.getEntite().getId())) {
+                throw new CourrierValidationException("Le courrier n'est pas sur le hub.");
+            }
         }
         DestinataireCourrierOdc dco =
                 courrier.getDestinataireOdc() != null ? courrier.getDestinataireOdc() : DestinataireCourrierOdc.EXTERNE;
@@ -1176,19 +1193,28 @@ public class CourrierService {
     }
 
     private void notifierDirecteursDcireHub(Courrier courrier, Entite dcire) {
-        Entite hub = entiteRepository.findById(dcire.getId()).orElse(dcire);
         LinkedHashSet<String> emails = new LinkedHashSet<>();
-        if (hub.getResponsable() != null
-                && hub.getResponsable().getEmail() != null
-                && !hub.getResponsable().getEmail().isBlank()) {
-            emails.add(hub.getResponsable().getEmail().trim());
-        }
-        for (Utilisateur x : utilisateurRepository.findByEntite_Id(hub.getId())) {
-            if (x.getRole() != null
-                    && "DIRECTEUR".equalsIgnoreCase(x.getRole().getNom().trim())
-                    && x.getEmail() != null
-                    && !x.getEmail().isBlank()) {
-                emails.add(x.getEmail().trim());
+        if (dcire != null && dcire.getId() != null) {
+            Entite hub = entiteRepository.findById(dcire.getId()).orElse(dcire);
+            if (hub.getResponsable() != null
+                    && hub.getResponsable().getEmail() != null
+                    && !hub.getResponsable().getEmail().isBlank()) {
+                emails.add(hub.getResponsable().getEmail().trim());
+            }
+            for (Utilisateur x : utilisateurRepository.findByEntite_Id(hub.getId())) {
+                if (x.getRole() != null
+                        && "DIRECTEUR".equalsIgnoreCase(x.getRole().getNom().trim())
+                        && x.getEmail() != null
+                        && !x.getEmail().isBlank()) {
+                    emails.add(x.getEmail().trim());
+                }
+            }
+        } else {
+            // Mode "profil" : pas d’entité DCIRE => notifier tous les DIRECTEUR (hub).
+            for (Utilisateur x : utilisateurRepository.findByRole_Nom("DIRECTEUR")) {
+                if (x.getEmail() != null && !x.getEmail().isBlank()) {
+                    emails.add(x.getEmail().trim());
+                }
             }
         }
         if (emails.isEmpty()) {
@@ -1264,6 +1290,14 @@ public class CourrierService {
     }
 
     private Entite resolveDcireDirection() {
+        return resolveDcireDirectionOptional().orElseThrow(() -> new CourrierValidationException(
+                "Aucune direction hub (DCIRE) détectée. Soit renommez l’entité Direction en base pour qu’elle "
+                        + "contienne « DCIRE » ou « DCI RE », soit renseignez l’ID : propriété "
+                        + "app.courrier.dcire-direction-id (sur AWS Elastic Beanstalk : variable "
+                        + "APP_COURIER_DCIRE_DIRECTION_ID). Repérez l’id dans la table entite (type Direction)."));
+    }
+
+    private Optional<Entite> resolveDcireDirectionOptional() {
         if (configuredDcireDirectionId > 0) {
             Entite e = entiteRepository
                     .findById(configuredDcireDirectionId)
@@ -1275,16 +1309,11 @@ public class CourrierService {
                 throw new CourrierValidationException(
                         "app.courrier.dcire-direction-id doit référencer une entité de type Direction.");
             }
-            return e;
+            return Optional.of(e);
         }
         return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
                 .filter(this::nomIndiqueDcire)
-                .findFirst()
-                .orElseThrow(() -> new CourrierValidationException(
-                        "Aucune direction hub (DCIRE) détectée. Soit renommez l’entité Direction en base pour qu’elle "
-                                + "contienne « DCIRE » ou « DCI RE », soit renseignez l’ID : propriété "
-                                + "app.courrier.dcire-direction-id (sur AWS Elastic Beanstalk : variable "
-                                + "APP_COURIER_DCIRE_DIRECTION_ID). Repérez l’id dans la table entite (type Direction)."));
+                .findFirst();
     }
 
     private boolean nomIndiqueDcire(Entite e) {
@@ -1504,8 +1533,13 @@ public class CourrierService {
             return false;
         }
         if ("DIRECTEUR".equals(role)) {
-            Entite dcire = resolveDcireDirection();
-            return c.getEntite() != null && Objects.equals(dcire.getId(), c.getEntite().getId());
+            Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
+            if (dcireOpt.isPresent()) {
+                Entite dcire = dcireOpt.get();
+                return c.getEntite() != null && Objects.equals(dcire.getId(), c.getEntite().getId());
+            }
+            // Mode profil : le hub gère les flux externes.
+            return c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE;
         }
         if (role.startsWith("DIRECTEUR_") && !"DIRECTEUR_ODC".equals(role)) {
             return listerToutPourMaStructure(full).stream().anyMatch(x -> x.getId().equals(c.getId()));

@@ -120,20 +120,22 @@ public class DataInitializer implements CommandLineRunner {
                 });
 
         // Compte métier : notifications nouveaux courriers / activités côté directeur ODC (rôle DIRECTEUR_ODC).
-        if (utilisateurRepository.findByEmail("directeurODC@gmail.com").isEmpty()) {
-            Utilisateur dirOdc = new Utilisateur();
-            dirOdc.setNom("Directeur");
-            dirOdc.setPrenom("ODC");
-            dirOdc.setPhone("00000000");
-            dirOdc.setGenre("Homme");
-            dirOdc.setEmail("directeurODC@gmail.com");
-            dirOdc.setPassword(passwordEncoder.encode("DirOT2026"));
-            dirOdc.setRole(directeurOdcRole);
-            utilisateurRepository.save(dirOdc);
-            System.out.println("Utilisateur DIRECTEUR_ODC (directeurODC@gmail.com) créé avec succès !");
-        } else {
-            System.out.println("Utilisateur DIRECTEUR_ODC existe déjà !");
-        }
+        // Forçage au démarrage pour éviter les 401 si le compte a été modifié manuellement en base.
+        Utilisateur dirOdc = utilisateurRepository.findByEmail("directeurODC@gmail.com")
+                .orElseGet(() -> {
+                    Utilisateur u = new Utilisateur();
+                    u.setNom("Directeur");
+                    u.setPrenom("ODC");
+                    u.setPhone("00000000");
+                    u.setGenre("Homme");
+                    u.setEmail("directeurODC@gmail.com");
+                    return u;
+                });
+        dirOdc.setRole(directeurOdcRole);
+        dirOdc.setPassword(passwordEncoder.encode("DirOT2026"));
+        dirOdc.setEtat(true);
+        utilisateurRepository.save(dirOdc);
+        System.out.println("Compte DIRECTEUR_ODC synchronisé: directeurODC@gmail.com / DirOT2026");
 
         creerDirecteurStructure(
                 "DIRECTEUR_FONDATION", "directeurFondation@gmail.com", "Fondation", "FONDATION");

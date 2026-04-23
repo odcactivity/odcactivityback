@@ -7,11 +7,14 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.text.Normalizer;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,11 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.odk.Entity.Courrier;
 import com.odk.Entity.Entite;
+import com.odk.Entity.HistoriqueCourrier;
 import com.odk.Entity.Utilisateur;
 import com.odk.Enum.StatutCourrier;
 import com.odk.Enum.TypeEntite;
 import com.odk.Repository.CourrierRepository;
 import com.odk.Repository.EntiteOdcRepository;
+import com.odk.Repository.HistoriqueCourrierRepository;
 import com.odk.dto.CourrierDashboardBucketDTO;
 import com.odk.dto.CourrierDashboardDetailRowDTO;
 import com.odk.dto.CourrierDashboardSerieDTO;
@@ -56,21 +61,23 @@ public class CourrierDashboardService {
 
     private final CourrierRepository courrierRepository;
     private final EntiteOdcRepository entiteOdcRepository;
+    private final HistoriqueCourrierRepository historiqueCourrierRepository;
+    private final CourrierService courrierService;
 
     @Value("${app.courrier.dcire-direction-id:0}")
     private long configuredDcireDirectionId;
 
     public CourrierDashboardTotalsDTO totaux(Long structureId, Utilisateur principal) {
-        Long effectiveStructureId = resolveEffectiveStructureId(structureId, principal);
-        List<Courrier> list = loadCourriers();
-        applyCourrierDashboardStructureFilter(list, effectiveStructureId, principal);
+        DashboardScope scope = resolveScope(structureId, principal);
+        List<Courrier> list = loadCourriersPourScope(scope, principal);
+        Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
         EnumMap<Cat, Long> m = new EnumMap<>(Cat.class);
         for (Cat c : Cat.values()) {
             m.put(c, 0L);
         }
         for (Courrier c : list) {
             try {
-                categorie(c, effectiveStructureId).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+                categorieDepuisHistorique(c, scope, histByCourrierId).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
             } catch (RuntimeException ex) {
                 // Ne bloque pas le dashboard pour un courrier incohérent.
             }
@@ -85,9 +92,9 @@ public class CourrierDashboardService {
 
     public CourrierDashboardSerieDTO serie(String periode, Long structureId, Utilisateur principal) {
         String p = periode == null ? "semaine" : periode.trim().toLowerCase(Locale.ROOT);
-        Long effectiveStructureId = resolveEffectiveStructureId(structureId, principal);
-        List<Courrier> list = loadCourriers();
-        applyCourrierDashboardStructureFilter(list, effectiveStructureId, principal);
+        DashboardScope scope = resolveScope(structureId, principal);
+        List<Courrier> list = loadCourriersPourScope(scope, principal);
+        Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
 
         LocalDate today = LocalDate.now(TZ);
         List<Bucket> buckets = switch (p) {
@@ -108,11 +115,11 @@ public class CourrierDashboardService {
 
             for (Courrier c : list) {
                 try {
-                    LocalDate dr = receptionDate(c);
+                    LocalDate dr = datePivotPourEvolution(c, histByCourrierId.get(c.getId()));
                     if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
                         continue;
                     }
-                    Optional<Cat> cat = categorie(c, effectiveStructureId);
+                    Optional<Cat> cat = categorieDepuisHistorique(c, scope, histByCourrierId);
                     if (cat.isEmpty()) {
                         continue;
                     }
@@ -131,6 +138,112 @@ public class CourrierDashboardService {
             dto.getBuckets().add(row);
         }
         return dto;
+    }
+
+    private enum DashboardScope {
+        DCIRE, ODC
+    }
+
+    private DashboardScope resolveScope(Long structureId, Utilisateur principal) {
+        if (principal == null || principal.getRole() == null || principal.getRole().getNom() == null) {
+            return DashboardScope.ODC;
+        }
+        String role = principal.getRole().getNom().trim().toUpperCase(Locale.ROOT);
+        if ("DIRECTEUR".equals(role) || "DCIRE".equals(role)) {
+            return DashboardScope.DCIRE;
+        }
+        // ADMIN / SUPERADMIN / DIRECTEUR_ODC => périmètre ODC
+        return DashboardScope.ODC;
+    }
+
+    /**
+     * Charge la liste des courriers "dédiés" au dashboard.
+     * - DCIRE : exactement la liste dédiée hub (déjà filtrée côté service).
+     * - ODC : union des listes ODC (comme le front fait), sur toutes les directions d’émission.
+     */
+    private List<Courrier> loadCourriersPourScope(DashboardScope scope, Utilisateur principal) {
+        if (scope == DashboardScope.DCIRE) {
+            return courrierService.listerPourDcire();
+        }
+        List<Entite> odcDirs = courrierService.listerDirectionsOdcPourBrouillon();
+        if (odcDirs == null || odcDirs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Courrier> byId = new HashMap<>();
+        for (Entite d : odcDirs) {
+            if (d == null || d.getId() == null) {
+                continue;
+            }
+            for (Courrier c : courrierService.listerPourOdc(d.getId(), "TOUS")) {
+                if (c != null && c.getId() != null) {
+                    byId.put(c.getId(), c);
+                }
+            }
+        }
+        return new ArrayList<>(byId.values());
+    }
+
+    private Map<Long, List<HistoriqueCourrier>> loadHistoriques(List<Courrier> courriers) {
+        if (courriers == null || courriers.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = courriers.stream()
+                .map(Courrier::getId)
+                .filter(x -> x != null)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        List<HistoriqueCourrier> all = historiqueCourrierRepository.findByCourrierIdInOrderByDateActionAsc(ids);
+        return all.stream().collect(Collectors.groupingBy(h -> h.getCourrier().getId()));
+    }
+
+    private LocalDate datePivotPourEvolution(Courrier c, List<HistoriqueCourrier> hist) {
+        if (hist != null && !hist.isEmpty()) {
+            HistoriqueCourrier first = hist.get(0);
+            if (first.getDateAction() != null) {
+                return first.getDateAction().toInstant().atZone(TZ).toLocalDate();
+            }
+        }
+        return receptionDate(c);
+    }
+
+    private Optional<Cat> categorieDepuisHistorique(
+            Courrier c,
+            DashboardScope scope,
+            Map<Long, List<HistoriqueCourrier>> histByCourrierId) {
+        List<HistoriqueCourrier> hist = c != null && c.getId() != null ? histByCourrierId.get(c.getId()) : null;
+        StatutCourrier s = null;
+        if (hist != null && !hist.isEmpty()) {
+            s = hist.get(hist.size() - 1).getStatut();
+        }
+        if (s == null) {
+            s = c != null ? c.getStatut() : null;
+        }
+        if (s == null || s == StatutCourrier.ARCHIVER) {
+            return Optional.empty();
+        }
+        if (s == StatutCourrier.REPONDU) {
+            return Optional.of(Cat.repondu);
+        }
+        if (EN_ATTENTE.contains(s)) {
+            return Optional.of(Cat.enAttente);
+        }
+        if (s == StatutCourrier.ENVOYER) {
+            return Optional.of(Cat.recu);
+        }
+        if (s == StatutCourrier.EN_COURS || s == StatutCourrier.IMPUTER) {
+            return Optional.of(Cat.valide);
+        }
+        if (s == StatutCourrier.TRANSMIS_DCIRE) {
+            return Optional.of(Cat.emis);
+        }
+        // DCIRE : on ne force pas "emis" autrement
+        if (scope == DashboardScope.DCIRE) {
+            return Optional.empty();
+        }
+        return Optional.empty();
     }
 
     private List<Courrier> loadCourriers() {

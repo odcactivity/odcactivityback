@@ -13,5 +13,8 @@ public interface HistoriqueCourrierRepository extends JpaRepository<HistoriqueCo
      // Historique complet d’un courrier
     List<HistoriqueCourrier> findByCourrierIdOrderByDateActionAsc(Long courrierId);
 
+    // Historique groupé (optimisation stats dashboard)
+    List<HistoriqueCourrier> findByCourrierIdInOrderByDateActionAsc(List<Long> courrierIds);
+
     void deleteByCourrierId(Long courrierId);
 }
