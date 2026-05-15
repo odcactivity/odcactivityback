@@ -265,8 +265,10 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
                     entiteOdcRepository.findById(utilisateur.getEntite().getId()).ifPresent(p::setEntite);
 
                 }
-                    if (utilisateur.getRole()!= null) {
-                     roleRepository.findByNom(utilisateur.getRole().getNom()).ifPresent(p::setRole);
+                    if (utilisateur.getRole() != null && utilisateur.getRole().getId() != null) {
+                        roleRepository.findById(utilisateur.getRole().getId()).ifPresent(p::setRole);
+                    } else if (utilisateur.getRole() != null && utilisateur.getRole().getNom() != null) {
+                        roleRepository.findByNom(utilisateur.getRole().getNom()).ifPresent(p::setRole);
                     }
 
                     boolean veutChangerMdp = utilisateur.getPassword() != null && !utilisateur.getPassword().isBlank()
