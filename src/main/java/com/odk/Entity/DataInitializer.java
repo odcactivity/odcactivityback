@@ -137,6 +137,34 @@ public class DataInitializer implements CommandLineRunner {
         utilisateurRepository.save(dirOdc);
         System.out.println("Compte DIRECTEUR_ODC synchronisé: directeurODC@gmail.com / DirOT2026");
 
+        Role responsableOdkRole = roleRepository.findByNom("RESPONSABLE_ODK")
+                .orElseGet(() -> {
+                    Role r = new Role();
+                    r.setNom("RESPONSABLE_ODK");
+                    return roleRepository.save(r);
+                });
+        if (utilisateurRepository.findByEmail("orangekalanso@gmail.com").isEmpty()) {
+            Utilisateur resp = new Utilisateur();
+            resp.setNom("Responsable");
+            resp.setPrenom("ODK");
+            resp.setPhone("00000000");
+            resp.setGenre("Homme");
+            resp.setEmail("orangekalanso@gmail.com");
+            resp.setPassword(passwordEncoder.encode("motdepasse123"));
+            resp.setRole(responsableOdkRole);
+            resp.setEtat(true);
+            utilisateurRepository.save(resp);
+            System.out.println("Compte RESPONSABLE_ODK créé : orangekalanso@gmail.com / motdepasse123");
+        } else {
+            utilisateurRepository.findByEmail("orangekalanso@gmail.com").ifPresent(u -> {
+                u.setRole(responsableOdkRole);
+                u.setPassword(passwordEncoder.encode("motdepasse123"));
+                u.setEtat(true);
+                utilisateurRepository.save(u);
+                System.out.println("Compte RESPONSABLE_ODK synchronisé : orangekalanso@gmail.com");
+            });
+        }
+
         creerDirecteurStructure(
                 "DIRECTEUR_FONDATION", "directeurFondation@gmail.com", "Fondation", "FONDATION");
         creerDirecteurStructure(

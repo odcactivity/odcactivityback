@@ -105,11 +105,11 @@ public class ActiviteService implements CrudService<Activite, Long> {
                 throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "La salle est déjà réservée pour une activité en cours ou en attente.");
             }
 
-            // Toute création par un personnel passe par validation directeur ODC (pas de diffusion aux personnels avant validation)
-            entity.setStatut(Statut.En_Validation_Directeur_ODC);
+            // Personnel → responsable ODK (salle, logistique) → directeur ODC
+            entity.setStatut(Statut.En_Validation_Responsable_ODK);
             Activite activiteCree = activiteRepository.save(entity);
             try {
-                envoiMailDirecteurOdcPourActivite(activiteCree);
+                envoiMailResponsableOdkPourActivite(activiteCree);
             } catch (RuntimeException mailEx) {
                 log.warn("Notification e-mail directeur ODC ignorée (activité id={}) : {}",
                         activiteCree.getId(), mailEx.getMessage());
@@ -197,6 +197,89 @@ public void envoiMail(Activite activiteCree){
             }
 }
 
+    public void envoiMailResponsableOdkPourActivite(Activite activiteCree) {
+        List<Utilisateur> responsables = utilisateurRepository.findByRole_Nom("RESPONSABLE_ODK");
+        if (responsables == null || responsables.isEmpty()) {
+            envoiMailDirecteurOdcPourActivite(activiteCree);
+            return;
+        }
+        String createur = activiteCree.getCreatedBy() != null
+                ? activiteCree.getCreatedBy().getPrenom() + " " + activiteCree.getCreatedBy().getNom()
+                : "un personnel";
+        String lien = buildFrontendUrl("/responsable-odk/dashboard");
+        String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(createur)
+                + "</strong> a créé l'activité <strong>" + escapeHtml(activiteCree.getNom())
+                + "</strong>. Merci de vérifier la salle et la logistique avant transmission au directeur ODC.</p>"
+                + "<p><a href=\"" + lien + "\">Tableau de bord responsable ODK</a></p>";
+        String sujet = "[ODC Activité] À traiter (responsable ODK) : " + activiteCree.getNom();
+        for (Utilisateur r : responsables) {
+            if (r.getEmail() != null && !r.getEmail().isBlank()) {
+                emailService.sendSimpleEmail(r.getEmail(), sujet,
+                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+            }
+        }
+    }
+
+    @Transactional
+    public Activite transfererAuDirecteurOdcParResponsable(Long activiteId, String note) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Responsable_ODK) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cette activité n'est pas en attente chez le responsable ODK.");
+        }
+        if (note != null && !note.isBlank()) {
+            a.setNoteResponsableOdk(note.trim());
+        }
+        a.setSuggestionDirecteurOdc(null);
+        a.setStatut(Statut.En_Validation_Directeur_ODC);
+        Activite saved = activiteRepository.save(a);
+        envoiMailDirecteurOdcPourActivite(saved);
+        return saved;
+    }
+
+    @Transactional
+    public Activite retournerAuPersonnelParResponsable(Long activiteId, String note) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Responsable_ODK) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cette activité n'est pas en attente chez le responsable ODK.");
+        }
+        a.setNoteResponsableOdk(note != null ? note.trim() : "");
+        a.setStatut(Statut.Rejetee);
+        a.setDirecteurOdcDecision(DecisionDirecteurOdc.REFUSEE);
+        a.setDirecteurOdcTraiteLe(new Date());
+        Activite saved = activiteRepository.save(a);
+        if (saved.getCreatedBy() != null && saved.getCreatedBy().getEmail() != null) {
+            String sujet = "[ODC Activité] À corriger : " + saved.getNom();
+            String corps = "<p>Bonjour,</p><p>Votre activité nécessite des ajustements (responsable ODK) :</p><p>"
+                    + escapeHtml(saved.getNoteResponsableOdk()) + "</p>";
+            emailService.sendSimpleEmail(saved.getCreatedBy().getEmail(), sujet,
+                    "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+        }
+        return saved;
+    }
+
+    public List<Activite> listerEnAttenteResponsableOdk() {
+        return activiteRepository.findByStatut(Statut.En_Validation_Responsable_ODK);
+    }
+
+    @Transactional
+    public Activite enregistrerSuggestionDirecteurOdcActivite(Long activiteId, String suggestion) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cette activité n'est pas en attente de validation directeur ODC.");
+        }
+        a.setSuggestionDirecteurOdc(suggestion != null ? suggestion.trim() : "");
+        a.setStatut(Statut.En_Validation_Responsable_ODK);
+        Activite saved = activiteRepository.save(a);
+        envoiMailResponsableOdkPourActivite(saved);
+        return saved;
+    }
+
     public void envoiMailDirecteurOdcPourActivite(Activite activiteCree) {
         List<Utilisateur> directeurs = utilisateurRepository.findByRole_Nom("DIRECTEUR_ODC");
         if (directeurs == null || directeurs.isEmpty()) {
@@ -247,8 +330,9 @@ public void envoiMail(Activite activiteCree){
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
         if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Cette activité n'est pas en attente de validation par le directeur ODC.");
+                    "Cette activité n'est pas en attente de validation par le directeur ODC (transmise par le responsable ODK).");
         }
+        a.setSuggestionDirecteurOdc(null);
         a.setStatut(Statut.En_Attente);
         a.setDirecteurOdcDecision(DecisionDirecteurOdc.VALIDEE);
         a.setDirecteurOdcTraiteLe(new Date());

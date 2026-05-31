@@ -18,5 +18,9 @@ public enum StatutCourrier {
      * par le ou la directeur·rice de cette structure avant mise à disposition du service.
      */
     ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE,
+    /** Courrier émis par la DCIRE vers la division ODC : tri / affectation service par le responsable ODK */
+    ATTENTE_TRAITEMENT_RESPONSABLE_ODK,
+    /** Réponse rédigée : validation (et suggestions éventuelles) par le directeur ODC avant envoi */
+    ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC,
     REPONDU
 }

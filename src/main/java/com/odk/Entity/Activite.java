@@ -43,6 +43,12 @@ public class Activite {
     @Temporal(TemporalType.TIMESTAMP)
     private Date directeurOdcTraiteLe;
 
+    @Column(columnDefinition = "TEXT")
+    private String noteResponsableOdk;
+
+    @Column(columnDefinition = "TEXT")
+    private String suggestionDirecteurOdc;
+
     private String lieu;
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -85,7 +91,9 @@ private List<ActiviteValidation> validations = new ArrayList<>();
     }
 
     public void mettreAJourStatut() {
-        if (statut == Statut.En_Validation_Directeur_ODC || statut == Statut.Rejetee) {
+        if (statut == Statut.En_Validation_Responsable_ODK
+                || statut == Statut.En_Validation_Directeur_ODC
+                || statut == Statut.Rejetee) {
             return;
         }
         Date maintenant = new Date();

@@ -59,7 +59,8 @@ public class ActiviteController {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         utilisateurRepository.findByEmail(email).ifPresent(u -> {
             if (u.getRole() != null && "PERSONNEL".equalsIgnoreCase(u.getRole().getNom())) {
-                all.removeIf(a -> a.getStatut() == Statut.En_Validation_Directeur_ODC
+                all.removeIf(a -> (a.getStatut() == Statut.En_Validation_Directeur_ODC
+                        || a.getStatut() == Statut.En_Validation_Responsable_ODK)
                         && (a.getCreatedBy() == null || !a.getCreatedBy().getId().equals(u.getId())));
             }
         });
@@ -118,10 +119,41 @@ public class ActiviteController {
         if (u == null || u.getRole() == null || !"PERSONNEL".equalsIgnoreCase(u.getRole().getNom())) {
             return;
         }
-        if (activite.getStatut() == Statut.En_Validation_Directeur_ODC
+        if ((activite.getStatut() == Statut.En_Validation_Directeur_ODC
+                || activite.getStatut() == Statut.En_Validation_Responsable_ODK)
                 && (activite.getCreatedBy() == null || !activite.getCreatedBy().getId().equals(u.getId()))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Accès refusé à cette activité.");
         }
+    }
+
+    @GetMapping("/responsable-odk/en-attente")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public List<ActiviteDTO> listerEnAttenteResponsableOdk() {
+        return activiteMapper.listeActivite(activiteService.listerEnAttenteResponsableOdk());
+    }
+
+    @PostMapping("/{id}/transmettre-directeur-odc")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ActiviteDTO transmettreDirecteurOdc(
+            @PathVariable Long id,
+            @RequestParam(required = false) String note) {
+        return activiteMapper.ACTIVITE_DTO(activiteService.transfererAuDirecteurOdcParResponsable(id, note));
+    }
+
+    @PostMapping("/{id}/retour-personnel-responsable")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ActiviteDTO retourPersonnelResponsable(
+            @PathVariable Long id,
+            @RequestParam String note) {
+        return activiteMapper.ACTIVITE_DTO(activiteService.retournerAuPersonnelParResponsable(id, note));
+    }
+
+    @PostMapping("/{id}/suggestion-directeur-odc")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ActiviteDTO suggestionDirecteurOdcActivite(
+            @PathVariable Long id,
+            @RequestParam String suggestion) {
+        return activiteMapper.ACTIVITE_DTO(activiteService.enregistrerSuggestionDirecteurOdcActivite(id, suggestion));
     }
 
     @PatchMapping("/{id}")

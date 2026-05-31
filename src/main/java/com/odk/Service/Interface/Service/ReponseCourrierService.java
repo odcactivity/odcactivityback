@@ -68,12 +68,14 @@ public class ReponseCourrierService {
             }
         }
 
-        // Création de la réponse
+        boolean validationDirecteurRequise = courrierService.requiertValidationReponseDirecteurOdc(courrier);
+
         ReponseCourrier reponse = new ReponseCourrier();
         reponse.setCourrier(courrier);
         reponse.setEmail(dto.getEmail());
         reponse.setObjet(dto.getObjet());
         reponse.setMessage(dto.getMessage());
+        reponse.setValideeDirecteurOdc(!validationDirecteurRequise);
 
         // Gestion des fichiers joints
         if (!fichiersJoints.isEmpty()) {
@@ -88,17 +90,19 @@ public class ReponseCourrierService {
         utilisateurRepository.findByEmail(dto.getEmail())
                 .ifPresent(reponse::setUtilisateur);
 
-        // Sauvegarde
         ReponseCourrier savedReponse = reponseCourrierRepository.save(reponse);
 
-        // Mise à jour du statut du courrier original
-        courrier.setStatut(com.odk.Enum.StatutCourrier.REPONDU);
-        courrierRepository.save(courrier);
-
-        // Envoyer les notifications par email
-        envoyerNotificationsReponse(courrier, dto);
-
-        log.info("Réponse enregistrée pour le courrier {} par {}", courrier.getId(), dto.getEmail());
+        if (validationDirecteurRequise) {
+            courrier.setStatut(com.odk.Enum.StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC);
+            courrierRepository.save(courrier);
+            notifierDirecteursOdcReponseEnAttente(courrier);
+            log.info("Réponse en attente validation directeur ODC — courrier {}", courrier.getId());
+        } else {
+            courrier.setStatut(com.odk.Enum.StatutCourrier.REPONDU);
+            courrierRepository.save(courrier);
+            envoyerNotificationsReponse(courrier, dto);
+            log.info("Réponse enregistrée pour le courrier {} par {}", courrier.getId(), dto.getEmail());
+        }
         return savedReponse;
     }
 
@@ -324,6 +328,18 @@ public class ReponseCourrierService {
     /**
      * Construit le corps de l'email pour l'expéditeur original
      */
+    private void notifierDirecteursOdcReponseEnAttente(Courrier courrier) {
+        List<Utilisateur> directeurs = utilisateurRepository.findByRole_Nom("DIRECTEUR_ODC");
+        String sujet = "[ODC Courrier] Valider la réponse : " + courrier.getObjet();
+        String corps = "<p>Une réponse attend votre validation avant envoi définitif.</p>";
+        for (Utilisateur d : directeurs) {
+            if (d.getEmail() != null && !d.getEmail().isBlank()) {
+                emailService.sendSimpleEmail(d.getEmail(), sujet,
+                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+            }
+        }
+    }
+
     private String buildEmailBodyExpediteur(String numeroCourrier, String objetCourrier, 
                                           String repondeur, String messageReponse) {
         return "<!DOCTYPE html><html><body>"

@@ -90,6 +90,22 @@ public class Courrier {
     @Column(name = "destinataire_odc", length = 32)
     private DestinataireCourrierOdc destinataireOdc;
 
+    /**
+     * Brouillon ODC : cible précise pour un envoi interne à une autre direction de la division
+     * (Fondation, RSE, DCI, Orange Digital Center, autre pilier ODC…). Si renseigné, aucun passage par la DCIRE.
+     */
+    @ManyToOne
+    @JoinColumn(name = "cible_interne_direction_id")
+    private Entite cibleInterneDirection;
+
+    /** Service ODC affecté par le responsable ODK (Kalanso, FabLab, Multimedia, Orange Fab). */
+    @ManyToOne
+    @JoinColumn(name = "service_odc_affecte_id")
+    private Entite serviceOdcAffecte;
+
+    @Column(columnDefinition = "TEXT")
+    private String noteResponsableOdk;
+
     /** Précision optionnelle pour une cible externe (structure hors division), si besoin métier. */
     @Column(name = "externe_precision", length = 512)
     private String externePrecision;

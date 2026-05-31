@@ -50,9 +50,17 @@ public class ReponseCourrier {
     @JoinColumn(name = "utilisateur_id")
     private Utilisateur utilisateur;
 
+    /** false tant que le directeur ODC n'a pas validé la réponse (circuit division ODC). */
+    @Column(name = "validee_directeur_odc")
+    private Boolean valideeDirecteurOdc = true;
+
     @PrePersist
     protected void onCreate() {
         this.dateReponse = new Date();
-        this.statut = StatutCourrier.REPONDU;
+        if (this.statut == null) {
+            this.statut = Boolean.TRUE.equals(valideeDirecteurOdc)
+                    ? StatutCourrier.REPONDU
+                    : StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC;
+        }
     }
 }

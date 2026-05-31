@@ -62,7 +62,7 @@ public class CourrierController {
     }
 
     @GetMapping("/dashboard/totaux")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
     public CourrierDashboardTotalsDTO courrierDashboardTotaux(
             @RequestParam(required = false) Long structureId,
             @AuthenticationPrincipal Utilisateur principal) {
@@ -70,7 +70,7 @@ public class CourrierController {
     }
 
     @GetMapping("/dashboard/serie")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DCIRE','DIRECTEUR_ODC','DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI')")
     public CourrierDashboardSerieDTO courrierDashboardSerie(
             @RequestParam(defaultValue = "semaine") String periode,
             @RequestParam(required = false) Long structureId,
@@ -114,7 +114,7 @@ public class CourrierController {
     }
 
     @PostMapping("/odc/brouillon")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('DIRECTEUR')")
     public ResponseEntity<Courrier> brouillonOdc(
             @RequestParam Long odcDirectionId,
             @RequestParam String numero,
@@ -284,6 +284,72 @@ public class CourrierController {
     @PreAuthorize("hasRole('DIRECTEUR')")
     public ResponseEntity<List<Courrier>> listerPourDcire() {
         return ResponseEntity.ok(courrierService.listerPourDcire());
+    }
+
+    @GetMapping("/dcire/cibles-division")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<List<EntiteDTO>> ciblesEmissionDcire() {
+        return ResponseEntity.ok(
+                courrierService.listerCiblesEmissionDcire().stream()
+                        .map(EntiteMapper::toDto)
+                        .collect(Collectors.toList()));
+    }
+
+    /** Seule la DCIRE émet des courriers vers les structures de la division. */
+    @PostMapping("/dcire/emission")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> emissionDcire(
+            @RequestParam Long cibleDirectionId,
+            @RequestParam String numero,
+            @RequestParam String objet,
+            @RequestParam(required = false) String expediteur,
+            @RequestParam(required = false) MultipartFile fichier
+    ) throws IOException {
+        CourrierDTO dto = new CourrierDTO();
+        dto.setNumero(numero);
+        dto.setObjet(objet);
+        dto.setExpediteur(expediteur != null ? expediteur : "DCIRE");
+        dto.setFichier(fichier);
+        return ResponseEntity.ok(courrierService.emettreCourrierParDcire(cibleDirectionId, dto));
+    }
+
+    @GetMapping("/responsable-odk/courriers/en-attente")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ResponseEntity<List<Courrier>> courriersEnAttenteResponsableOdk() {
+        return ResponseEntity.ok(courrierService.listerCourriersEnAttenteResponsableOdk());
+    }
+
+    @GetMapping("/responsable-odk/services-odc")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ResponseEntity<List<EntiteDTO>> servicesOdcResponsable() {
+        return ResponseEntity.ok(
+                courrierService.listerServicesOdcPourResponsable().stream()
+                        .map(EntiteMapper::toDto)
+                        .collect(Collectors.toList()));
+    }
+
+    @PostMapping("/responsable-odk/courriers/{id}/affecter-service")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ResponseEntity<Courrier> affecterServiceResponsableOdk(
+            @PathVariable Long id,
+            @RequestParam Long serviceEntiteId,
+            @RequestParam(required = false) String note
+    ) throws IOException {
+        return ResponseEntity.ok(courrierService.affecterCourrierAuServiceParResponsable(id, serviceEntiteId, note));
+    }
+
+    @GetMapping("/odc-directeur/reponses-en-attente")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<List<Courrier>> reponsesEnAttenteDirecteurOdc() {
+        return ResponseEntity.ok(courrierService.listerCourriersReponseEnAttenteDirecteurOdc());
+    }
+
+    @PostMapping("/odc-directeur/{id}/valider-reponse")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> validerReponseDirecteurOdc(
+            @PathVariable Long id,
+            @RequestParam(required = false) String suggestion) {
+        return ResponseEntity.ok(courrierService.validerReponseParDirecteurOdc(id, suggestion));
     }
 
     @PostMapping("/dcire/reception-externe")

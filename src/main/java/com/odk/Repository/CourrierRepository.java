@@ -52,6 +52,8 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     List<Courrier> findByStatutInOrderByDateReceptionDesc(Collection<StatutCourrier> statuts);
 
+    List<Courrier> findByStatutOrderByDateReceptionDesc(StatutCourrier statut);
+
     @Query("SELECT c FROM Courrier c ORDER BY c.dateReception DESC")
     List<Courrier> findAllOrderByDateReceptionDesc();
 
