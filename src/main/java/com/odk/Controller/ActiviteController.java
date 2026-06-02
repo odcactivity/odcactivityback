@@ -52,7 +52,7 @@ public class ActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     @ResponseStatus(HttpStatus.OK)
     public List<ActiviteDTO> listerActivite() {
         List<Activite> all = new ArrayList<>(activiteService.List());
@@ -74,7 +74,7 @@ public class ActiviteController {
     }
 
     @GetMapping("/calendrier")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public List<ActiviteDTO> listerPourCalendrier() {
         return activiteMapper.listeActivite(activiteService.listerPourCalendrier());
     }

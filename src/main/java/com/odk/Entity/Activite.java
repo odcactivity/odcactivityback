@@ -43,6 +43,10 @@ public class Activite {
     @Temporal(TemporalType.TIMESTAMP)
     private Date directeurOdcTraiteLe;
 
+    /** Date de transmission au directeur ODC par le responsable ODK (conservée pour l'historique). */
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date transmiseDirecteurOdcLe;
+
     @Column(columnDefinition = "TEXT")
     private String noteResponsableOdk;
 

@@ -234,6 +234,7 @@ public void envoiMail(Activite activiteCree){
         }
         a.setSuggestionDirecteurOdc(null);
         a.setStatut(Statut.En_Validation_Directeur_ODC);
+        a.setTransmiseDirecteurOdcLe(new Date());
         Activite saved = activiteRepository.save(a);
         envoiMailDirecteurOdcPourActivite(saved);
         return saved;
@@ -266,8 +267,9 @@ public void envoiMail(Activite activiteCree){
         return activiteRepository.findByStatut(Statut.En_Validation_Responsable_ODK);
     }
 
+    /** Historique : transmissions au directeur ODC, conservées après validation ou refus. */
     public List<Activite> listerTransmisesDirecteurOdcParResponsable() {
-        return activiteRepository.findByStatut(Statut.En_Validation_Directeur_ODC);
+        return activiteRepository.findHistoriqueTransmissionsDirecteurOdc(Statut.En_Validation_Directeur_ODC);
     }
 
     @Transactional

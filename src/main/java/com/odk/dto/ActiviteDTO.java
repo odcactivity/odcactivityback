@@ -31,6 +31,8 @@ public class ActiviteDTO {
     private DecisionDirecteurOdc directeurOdcDecision;
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private Date directeurOdcTraiteLe;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private Date transmiseDirecteurOdcLe;
     private String lieu;
     private String description;
     private int objectifParticipation;

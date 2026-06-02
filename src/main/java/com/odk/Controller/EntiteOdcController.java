@@ -85,7 +85,7 @@ public class EntiteOdcController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<EntiteDTO>> ListerEntite2(){
         List<EntiteDTO>entities=entiteOdcService.allList();
         System.out.println("je suis dans entite========="+entities);
@@ -98,7 +98,7 @@ public class EntiteOdcController {
      * Endpoint de test pour vérifier la liaison responsable-entité
      */
     @GetMapping("/test-responsable/{entiteId}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<String> testLiaisonResponsable(@PathVariable Long entiteId) {
         String result = entiteOdcService.testLiaisonResponsable(entiteId);
         return ResponseEntity.ok(result);
@@ -260,34 +260,34 @@ public class EntiteOdcController {
     }
 
     @GetMapping("get/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public Long countActivitiesByEntite(@PathVariable Long id) {
         return entiteOdcService.getCountOfActivitiesByEntiteId(id);
     }
 
     @GetMapping("/directions")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<EntiteDTO>> getDirections() {
         List<EntiteDTO> directions = entiteOdcService.findDirections();
         return ResponseEntity.ok(directions);
     }
 
     @GetMapping("/services")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<EntiteDTO>> getAllServices() {
         List<EntiteDTO> services = entiteOdcService.findAllServices();
         return ResponseEntity.ok(services);
     }
 
     @GetMapping("/parent/{parentId}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<EntiteDTO>> getServicesByParent(@PathVariable Long parentId) {
         List<EntiteDTO> services = entiteOdcService.findServicesByParent(parentId);
         return ResponseEntity.ok(services);
     }
 
     @GetMapping("/nombre") // Pas de paramètres
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<Long> getNombreEntite() {
         long count = entiteOdcRepository.count();
         return ResponseEntity.ok(count); // Retourne le nombre d'utilisateurs
