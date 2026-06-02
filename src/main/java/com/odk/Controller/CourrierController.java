@@ -329,6 +329,12 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.listerCourriersEnAttenteResponsableOdk());
     }
 
+    @GetMapping("/responsable-odk/courriers-delegues")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ResponseEntity<List<Courrier>> courriersDeleguesResponsableOdk() {
+        return ResponseEntity.ok(courrierService.listerCourriersDeleguesResponsableOdk());
+    }
+
     @GetMapping("/responsable-odk/services-odc")
     @PreAuthorize("hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<EntiteDTO>> servicesOdcResponsable() {
@@ -378,6 +384,14 @@ public class CourrierController {
             @RequestParam Long serviceEntiteId,
             @RequestParam(required = false) String note) {
         return ResponseEntity.ok(courrierService.deleguerCourrierAuServiceParDirecteurOdc(id, serviceEntiteId, note));
+    }
+
+    @PostMapping("/odc-directeur/{id}/deleguer-responsable-odk")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> deleguerResponsableOdkDirecteurOdc(
+            @PathVariable Long id,
+            @RequestParam(required = false) String note) {
+        return ResponseEntity.ok(courrierService.deleguerAuResponsableOdkParDirecteurOdc(id, note));
     }
 
     @PostMapping("/odc-directeur/{id}/confirmer-envoi-physique")

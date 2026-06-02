@@ -86,6 +86,8 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
             + "ORDER BY c.dateReception DESC")
     List<Courrier> findPourVueDcireDivision(@Param("ids") Collection<Long> ids);
 
+    List<Courrier> findByDelegueResponsableOdkTrueOrderByDateReceptionDesc();
+
     List<Courrier> findByStructureOrigineIdOrderByDateReceptionDesc(Long structureOrigineId);
 
     @Query("SELECT DISTINCT c FROM Courrier c WHERE "

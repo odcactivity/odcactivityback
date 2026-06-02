@@ -620,6 +620,14 @@ public class CourrierService {
                 StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK);
     }
 
+    /**
+     * Responsable ODK : récupérer les courriers délégués par le directeur ODC (préparation hors application).
+     * Aucun droit de répondre ici : la réponse officielle est saisie par le directeur ODC.
+     */
+    public List<Courrier> listerCourriersDeleguesResponsableOdk() {
+        return courrierRepository.findByDelegueResponsableOdkTrueOrderByDateReceptionDesc();
+    }
+
     /** Services Orange Digital Center : Kalanso, FabLab, Multimedia, Orange Fab. */
     public List<Entite> listerServicesOdcPourResponsable() {
         List<Entite> services = entiteRepository.findByType(TypeEntite.SERVICE).stream()
@@ -769,6 +777,26 @@ public class CourrierService {
                 "Délégué par le directeur ODC à : " + service.getNom()
                         + (note != null && !note.isBlank() ? " — " + note.trim() : ""));
         notifierEntiteResponsable(courrier, service);
+        return courrier;
+    }
+
+    /** Directeur ODC : délégation fixe au responsable ODK (préparation Word / papier hors application). */
+    @Transactional
+    public Courrier deleguerAuResponsableOdkParDirecteurOdc(Long courrierId, String note) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.ENVOYER && courrier.getStatut() != StatutCourrier.IMPUTER) {
+            throw new CourrierValidationException("Ce courrier n'est pas dans une étape déléguable.");
+        }
+        // Marquer la délégation “physique”
+        courrier.setDelegueResponsableOdk(true);
+        if (note != null && !note.isBlank()) {
+            courrier.setNoteResponsableOdk(note.trim());
+        }
+        courrierRepository.save(courrier);
+        historiqueSimple(courrier, courrier.getEntite(), courrier.getStatut(),
+                "Délégué au responsable ODK (préparation hors application)"
+                        + (note != null && !note.isBlank() ? " — " + note.trim() : ""));
+        notifierResponsablesOdkNouveauCourrier(courrier);
         return courrier;
     }
 

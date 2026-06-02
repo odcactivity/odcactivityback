@@ -106,6 +106,13 @@ public class Courrier {
     @Column(columnDefinition = "TEXT")
     private String noteResponsableOdk;
 
+    /**
+     * Délégation “physique” vers le responsable ODK : le directeur ODC remet le courrier,
+     * le responsable prépare la réponse hors application. La réponse officielle est ensuite saisie
+     * uniquement par le directeur ODC.
+     */
+    private boolean delegueResponsableOdk = false;
+
     /** Précision optionnelle pour une cible externe (structure hors division), si besoin métier. */
     @Column(name = "externe_precision", length = 512)
     private String externePrecision;
