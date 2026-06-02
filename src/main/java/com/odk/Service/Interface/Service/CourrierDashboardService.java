@@ -141,7 +141,7 @@ public class CourrierDashboardService {
     }
 
     private enum DashboardScope {
-        DCIRE, ODC
+        DCIRE, ODC, STRUCTURE
     }
 
     private DashboardScope resolveScope(Long structureId, Utilisateur principal) {
@@ -151,6 +151,9 @@ public class CourrierDashboardService {
         String role = principal.getRole().getNom().trim().toUpperCase(Locale.ROOT);
         if ("DIRECTEUR".equals(role) || "DCIRE".equals(role)) {
             return DashboardScope.DCIRE;
+        }
+        if ("DIRECTEUR_FONDATION".equals(role) || "DIRECTEUR_RSE".equals(role) || "DIRECTEUR_DCI".equals(role)) {
+            return DashboardScope.STRUCTURE;
         }
         // ADMIN / SUPERADMIN / DIRECTEUR_ODC => périmètre ODC
         return DashboardScope.ODC;
@@ -164,6 +167,9 @@ public class CourrierDashboardService {
     private List<Courrier> loadCourriersPourScope(DashboardScope scope, Utilisateur principal) {
         if (scope == DashboardScope.DCIRE) {
             return courrierService.listerPourDcire();
+        }
+        if (scope == DashboardScope.STRUCTURE) {
+            return courrierService.listerToutPourMaStructure(principal);
         }
         List<Entite> odcDirs = courrierService.listerDirectionsOdcPourBrouillon();
         if (odcDirs == null || odcDirs.isEmpty()) {
@@ -237,6 +243,20 @@ public class CourrierDashboardService {
         if (s == StatutCourrier.REPONDU) {
             return Optional.of(Cat.repondu);
         }
+        if (scope == DashboardScope.DCIRE) {
+            Long dcireId = resolveDcireDirectionIdForDashboard();
+            if (dcireId != null && estCourrierEmisParStructure(c, dcireId)) {
+                return Optional.of(Cat.emis);
+            }
+        }
+        if (scope == DashboardScope.STRUCTURE) {
+            if (s == StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE
+                    || s == StatutCourrier.ENVOYER
+                    || s == StatutCourrier.EN_COURS
+                    || s == StatutCourrier.IMPUTER) {
+                return Optional.of(Cat.recu);
+            }
+        }
         if (EN_ATTENTE.contains(s)) {
             return Optional.of(Cat.enAttente);
         }
@@ -253,9 +273,11 @@ public class CourrierDashboardService {
             }
             return Optional.of(Cat.emis);
         }
-        // DCIRE : on ne force pas "emis" autrement
         if (scope == DashboardScope.DCIRE) {
-            return Optional.empty();
+            if (s == StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK
+                    || s == StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE) {
+                return Optional.of(Cat.enAttente);
+            }
         }
         return Optional.empty();
     }
@@ -388,6 +410,11 @@ public class CourrierDashboardService {
             if (dcireId != null) {
                 return dcireId;
             }
+            if (myStructureId != null) {
+                return myStructureId;
+            }
+        }
+        if ("DIRECTEUR_FONDATION".equals(role) || "DIRECTEUR_RSE".equals(role) || "DIRECTEUR_DCI".equals(role)) {
             if (myStructureId != null) {
                 return myStructureId;
             }

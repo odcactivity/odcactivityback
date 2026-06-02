@@ -251,6 +251,15 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.enregistrerCourrierExterneDepuisMaStructure(dto, utilisateur));
     }
 
+    @GetMapping("/odc/cibles-internes")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<List<EntiteDTO>> ciblesInternesOdc(@RequestParam Long origineDirectionId) {
+        return ResponseEntity.ok(
+                courrierService.listerDirectionsCiblesInternesPourOdc(origineDirectionId).stream()
+                        .map(EntiteMapper::toDto)
+                        .collect(Collectors.toList()));
+    }
+
     @PostMapping("/division-interne")
     @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
             + "or hasRole('DIRECTEUR_FONDATION') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI')")
@@ -300,7 +309,7 @@ public class CourrierController {
     @PreAuthorize("hasRole('DIRECTEUR')")
     public ResponseEntity<Courrier> emissionDcire(
             @RequestParam Long cibleDirectionId,
-            @RequestParam String numero,
+            @RequestParam(required = false) String numero,
             @RequestParam String objet,
             @RequestParam(required = false) String expediteur,
             @RequestParam(required = false) MultipartFile fichier
@@ -308,7 +317,8 @@ public class CourrierController {
         CourrierDTO dto = new CourrierDTO();
         dto.setNumero(numero);
         dto.setObjet(objet);
-        dto.setExpediteur(expediteur != null ? expediteur : "DCIRE");
+        dto.setExpediteur(expediteur != null ? expediteur : "KEÏTA DCIRE");
+        dto.setDirectionId(cibleDirectionId);
         dto.setFichier(fichier);
         return ResponseEntity.ok(courrierService.emettreCourrierParDcire(cibleDirectionId, dto));
     }
@@ -338,6 +348,15 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.affecterCourrierAuServiceParResponsable(id, serviceEntiteId, note));
     }
 
+    @GetMapping("/odc-directeur/services-odc")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<List<EntiteDTO>> servicesOdcPourDirecteur() {
+        return ResponseEntity.ok(
+                courrierService.listerServicesOdcPourResponsable().stream()
+                        .map(EntiteMapper::toDto)
+                        .collect(Collectors.toList()));
+    }
+
     @GetMapping("/odc-directeur/reponses-en-attente")
     @PreAuthorize("hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<List<Courrier>> reponsesEnAttenteDirecteurOdc() {
@@ -350,6 +369,29 @@ public class CourrierController {
             @PathVariable Long id,
             @RequestParam(required = false) String suggestion) {
         return ResponseEntity.ok(courrierService.validerReponseParDirecteurOdc(id, suggestion));
+    }
+
+    @PostMapping("/odc-directeur/{id}/deleguer-service")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> deleguerServiceDirecteurOdc(
+            @PathVariable Long id,
+            @RequestParam Long serviceEntiteId,
+            @RequestParam(required = false) String note) {
+        return ResponseEntity.ok(courrierService.deleguerCourrierAuServiceParDirecteurOdc(id, serviceEntiteId, note));
+    }
+
+    @PostMapping("/odc-directeur/{id}/confirmer-envoi-physique")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> confirmerEnvoiPhysiqueDirecteurOdc(@PathVariable Long id) {
+        return ResponseEntity.ok(courrierService.confirmerEnvoiPhysiqueParDirecteurOdc(id));
+    }
+
+    @PostMapping("/dcire/{id}/valider-decharge-reponse")
+    @PreAuthorize("hasRole('DIRECTEUR')")
+    public ResponseEntity<Courrier> validerDechargeReponseDcire(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.validerDechargeReponseParDcire(id, utilisateur));
     }
 
     @PostMapping("/dcire/reception-externe")
@@ -477,7 +519,8 @@ public class CourrierController {
             @RequestParam String objet,
             @RequestParam String message,
             @RequestParam(required = false) MultipartFile file,
-            @RequestParam(required = false) List<MultipartFile> attachments
+            @RequestParam(required = false) List<MultipartFile> attachments,
+            @AuthenticationPrincipal Utilisateur utilisateur
     ) throws IOException {
 
         ReponseCourrierDTO dto = new ReponseCourrierDTO();
@@ -489,7 +532,7 @@ public class CourrierController {
         dto.setAttachments(attachments);
 
         try {
-            ReponseCourrier reponse = reponseCourrierService.repondreCourrier(dto);
+            ReponseCourrier reponse = reponseCourrierService.repondreCourrier(dto, utilisateur);
             return ResponseEntity.ok(reponse);
         } catch (CourrierValidationException e) {
             return ResponseEntity

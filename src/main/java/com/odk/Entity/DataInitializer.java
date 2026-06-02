@@ -9,6 +9,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.Optional;
 
 @Component
@@ -97,6 +98,8 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Utilisateur DIRECTEUR renommé de directeur@gmail.com vers dcire@gmail.com !");
         }
 
+        Entite entiteDcire = assurerEntiteDirectionDcire();
+
         if (utilisateurRepository.findByEmail("dcire@gmail.com").isEmpty()) {
             Utilisateur directeur = new Utilisateur();
             directeur.setNom("DCIRE");
@@ -106,9 +109,17 @@ public class DataInitializer implements CommandLineRunner {
             directeur.setEmail("dcire@gmail.com");
             directeur.setPassword(passwordEncoder.encode("motdepasse123"));
             directeur.setRole(directeurRole);
+            directeur.setEntite(entiteDcire);
             utilisateurRepository.save(directeur);
             System.out.println("Utilisateur DIRECTEUR (dcire@gmail.com) créé avec succès !");
         } else {
+            utilisateurRepository.findByEmail("dcire@gmail.com").ifPresent(u -> {
+                if (u.getEntite() == null) {
+                    u.setEntite(entiteDcire);
+                    utilisateurRepository.save(u);
+                    System.out.println("Compte dcire@gmail.com rattaché à l'entité DCIRE (id=" + entiteDcire.getId() + ").");
+                }
+            });
             System.out.println("Utilisateur DIRECTEUR existe déjà !");
         }
 
@@ -213,6 +224,31 @@ public class DataInitializer implements CommandLineRunner {
                             + " créé sans entité (rattacher une direction en admin si besoin).");
         }
         utilisateurRepository.save(u);
+    }
+
+    /** Direction hub DCIRE (émission courriers) — créée si absente. */
+    private Entite assurerEntiteDirectionDcire() {
+        Optional<Entite> existante = entiteOdcRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(DataInitializer::nomIndiqueEntiteDcire)
+                .findFirst();
+        if (existante.isPresent()) {
+            return existante.get();
+        }
+        Entite hub = new Entite();
+        hub.setNom("DCIRE");
+        hub.setType(TypeEntite.DIRECTION);
+        hub.setDescription("Direction hub — émission des courriers division");
+        Entite saved = entiteOdcRepository.save(hub);
+        System.out.println("Entité direction DCIRE créée (id=" + saved.getId() + ").");
+        return saved;
+    }
+
+    private static boolean nomIndiqueEntiteDcire(Entite e) {
+        if (e == null || e.getNom() == null) {
+            return false;
+        }
+        String n = e.getNom().toUpperCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+        return n.contains("DCIRE") || n.contains("DCI RE");
     }
 
     private static boolean directionMatcheStructure(Entite e, String motClefDirection) {
