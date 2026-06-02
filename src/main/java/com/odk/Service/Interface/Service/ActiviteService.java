@@ -296,11 +296,14 @@ public void envoiMail(Activite activiteCree){
     }
 
     private void assertPersonnelEstCreateurEtPeutModifier(Activite a, Utilisateur utilisateur) {
-        if (a.getCreatedBy() == null || utilisateur == null
-                || a.getCreatedBy().getId() == null
-                || !Objects.equals(a.getCreatedBy().getId(), utilisateur.getId())) {
+        if (utilisateur == null || utilisateur.getId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Vous n'avez pas le droit de modifier cette activité.");
+                    "Utilisateur non authentifié.");
+        }
+        Long createurId = a.getCreatedBy() != null ? a.getCreatedBy().getId() : null;
+        if (createurId == null || !Objects.equals(createurId, utilisateur.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Vous n'avez pas le droit de modifier cette activité (réservée au créateur).");
         }
         if (a.getStatut() == Statut.En_Validation_Directeur_ODC) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -316,9 +319,9 @@ public void envoiMail(Activite activiteCree){
     public void supprimerParDirecteurOdc(Long activiteId) {
         Activite a = activiteRepository.findById(activiteId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
-        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+        if (a.getStatut() == Statut.En_Validation_Responsable_ODK) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Seules les activités en attente de validation directeur ODC peuvent être supprimées.");
+                    "Cette activité est encore chez le responsable ODK et ne peut pas être supprimée par le directeur ODC.");
         }
         activiteRepository.delete(a);
     }

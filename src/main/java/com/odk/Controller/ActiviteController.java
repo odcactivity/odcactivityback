@@ -194,6 +194,14 @@ public class ActiviteController {
     }
    
     
+    /** Mise à jour sans liste d'étapes dans l'URL (évite PUT /activite/{id}/ qui provoquait un 403). */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('PERSONNEL')")
+    @ResponseStatus(HttpStatus.OK)
+    public Activite modifierActiviteDto(@PathVariable Long id, @RequestBody ActiviteDTO activite) {
+        return activiteService.updateDTO(activite, List.of(), id);
+    }
+
     @PutMapping("/{id}/{listeEtape}")
     @PreAuthorize("hasRole('PERSONNEL')")
     @ResponseStatus(HttpStatus.OK)
