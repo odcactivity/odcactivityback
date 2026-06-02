@@ -66,6 +66,26 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
             + "WHERE c.entite.id = :eid ORDER BY c.dateReception DESC")
     List<Courrier> findPourHubDcire(@Param("eid") Long eid);
 
+    /**
+     * Vue dashboard DCIRE (division) :
+     * - courriers émis par DCIRE ou par une direction fille (ODC/Fondation/RSE/DCI),
+     * - courriers détenus par DCIRE / directions filles / services sous directions filles,
+     * - et ceux dont la directionInitial est DCIRE ou une direction fille.
+     */
+    /**
+     * Vue DCIRE : toutes les directions de la division (hub + ODC / Fondation / RSE / DCI) et services rattachés.
+     */
+    @Query("SELECT DISTINCT c FROM Courrier c "
+            + "LEFT JOIN FETCH c.entite "
+            + "LEFT JOIN FETCH c.structureOrigine "
+            + "LEFT JOIN FETCH c.directionInitial "
+            + "WHERE (c.structureOrigine IS NOT NULL AND c.structureOrigine.id IN :ids) OR "
+            + "(c.entite IS NOT NULL AND c.entite.id IN :ids) OR "
+            + "(c.directionInitial IS NOT NULL AND c.directionInitial.id IN :ids) OR "
+            + "(c.entite IS NOT NULL AND c.entite.parent IS NOT NULL AND c.entite.parent.id IN :ids) "
+            + "ORDER BY c.dateReception DESC")
+    List<Courrier> findPourVueDcireDivision(@Param("ids") Collection<Long> ids);
+
     List<Courrier> findByStructureOrigineIdOrderByDateReceptionDesc(Long structureOrigineId);
 
     @Query("SELECT DISTINCT c FROM Courrier c WHERE "

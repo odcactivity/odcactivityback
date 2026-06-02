@@ -394,13 +394,23 @@ public class CourrierService {
     }
 
     /**
-     * DCIRE : uniquement les courriers dont le détenteur courant ({@link Courrier#getEntite()}) est la direction DCIRE.
+     * DCIRE : courriers émis par le hub ({@link Courrier#getStructureOrigine()}) ou détenus au hub / ses services.
      */
     @Transactional(readOnly = true)
     public List<Courrier> listerPourDcire() {
         Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
         if (dcireOpt.isPresent()) {
-            return courrierRepository.findPourHubDcire(dcireOpt.get().getId());
+            LinkedHashSet<Long> ids = new LinkedHashSet<>();
+            ids.add(dcireOpt.get().getId());
+            for (Entite division : listerCiblesEmissionDcire()) {
+                if (division != null && division.getId() != null) {
+                    ids.add(division.getId());
+                }
+            }
+            if (ids.isEmpty()) {
+                return List.of();
+            }
+            return courrierRepository.findPourVueDcireDivision(ids);
         }
         // Mode "DCIRE = profil" : pas d’entité hub dédiée => on limite strictement aux flux externes.
         return courrierRepository.findAllOrderByDateReceptionDesc().stream()
@@ -505,6 +515,23 @@ public class CourrierService {
                 "Seule la DCIRE émet des courriers. Utilisez POST /api/courriers/dcire/emission.");
     }
 
+    /**
+     * Cibles internes pour un brouillon / formulaire ODC (hors direction d’origine).
+     */
+    public List<Entite> listerDirectionsCiblesInternesPourOdc(Long origineDirectionId) {
+        Entite origine = entiteRepository.findById(origineDirectionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction d'origine introuvable."));
+        if (origine.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("L'origine doit être une direction.");
+        }
+        return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                .filter(e -> !nomIndiqueDcire(e))
+                .filter(this::estMembreDivisionDcire)
+                .filter(e -> !Objects.equals(e.getId(), origine.getId()))
+                .sorted(Comparator.comparing(e -> normalizeNomEntite(e.getNom()), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
     /** Destinataires division (Fondation, RSE, DCI, piliers ODC) — émission réservée à la DCIRE. */
     public List<Entite> listerCiblesEmissionDcire() {
         return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
@@ -516,7 +543,10 @@ public class CourrierService {
 
     /**
      * Émission d'un courrier par la DCIRE vers une structure de la division.
-     * Périmètre Orange Digital Center / ODK : passage obligatoire par le responsable ODK.
+     * <ul>
+     *   <li><b>ODC</b> : workflow produit ODCActivité (responsable ODK, affectation service, etc.).</li>
+     *   <li><b>Fondation / RSE / DCI</b> : réception directe ({@link StatutCourrier#ENVOYER}) — reçu + réponse uniquement, sans validation type ODC.</li>
+     * </ul>
      */
     @Transactional
     public Courrier emettreCourrierParDcire(Long cibleDirectionId, CourrierDTO dto) throws IOException {
@@ -529,6 +559,13 @@ public class CourrierService {
         }
         if (nomIndiqueDcire(cible) || !estMembreDivisionDcire(cible)) {
             throw new CourrierValidationException("Destinataire invalide pour une émission DCIRE.");
+        }
+
+        if (dto.getDirectionId() == null) {
+            dto.setDirectionId(cibleDirectionId);
+        }
+        if (dto.getNumero() == null || dto.getNumero().isBlank()) {
+            dto.setNumero("DCIRE-" + System.currentTimeMillis());
         }
 
         CourrierValidator.ValidationResult validation = CourrierValidator.validateCourrierData(dto, dto.getFichier());
@@ -547,8 +584,6 @@ public class CourrierService {
         Courrier courrier = new Courrier();
         courrier.setNumero(dto.getNumero());
         courrier.setObjet(dto.getObjet());
-        courrier.setExpediteur(dto.getExpediteur());
-        courrier.setDestinataireOdc(DestinataireCourrierOdc.fromParam(dto.getDestinataireOdc()));
         if (dto.getExternePrecision() != null && !dto.getExternePrecision().isBlank()) {
             courrier.setExternePrecision(dto.getExternePrecision().trim());
         }
@@ -562,19 +597,20 @@ public class CourrierService {
         courrier.setDateRelance(new Date(System.currentTimeMillis() + 2L * 24 * 60 * 60 * 1000));
 
         if (estDirectionOdc(cible)) {
-            courrier.setEntite(null);
-            courrier.setStatut(StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK);
-            courrierRepository.save(courrier);
-            historiqueSimple(courrier, dcire, StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK,
-                    "Émis par la DCIRE — en attente du responsable ODK (affectation service)");
-            notifierResponsablesOdkNouveauCourrier(courrier);
-        } else {
             courrier.setEntite(cible);
-            courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE);
+            courrier.setStatut(StatutCourrier.ENVOYER);
             courrierRepository.save(courrier);
-            historiqueSimple(courrier, cible, StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE,
-                    "Émis par la DCIRE — en attente validation directeur structure");
-            notifierDirecteursStructure(courrier, null);
+            historiqueSimple(courrier, cible, StatutCourrier.ENVOYER,
+                    "Émis par la DCIRE (expédition KEÏTA) — remis au directeur ODC");
+            notifierDirecteursOdcNouveauCourrier(courrier);
+        } else {
+            // Fondation / RSE / DCI : pas de workflow validation ODC — courrier immédiatement « reçu » sur la structure.
+            courrier.setEntite(cible);
+            courrier.setStatut(StatutCourrier.ENVOYER);
+            courrierRepository.save(courrier);
+            historiqueSimple(courrier, cible, StatutCourrier.ENVOYER,
+                    "Émis par la DCIRE — reçu sur la structure destinataire (réponse possible)");
+            notifierDirecteursStructureReception(courrier, destinataireStructureDepuisDirection(cible));
         }
         return courrier;
     }
@@ -603,27 +639,9 @@ public class CourrierService {
     @Transactional
     public Courrier affecterCourrierAuServiceParResponsable(Long courrierId, Long serviceEntiteId, String note)
             throws IOException {
-        Courrier courrier = getCourrier(courrierId);
-        if (courrier.getStatut() != StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK) {
-            throw new CourrierValidationException("Ce courrier n'est pas en attente chez le responsable ODK.");
-        }
-        Entite service = entiteRepository.findById(serviceEntiteId)
-                .orElseThrow(() -> new CourrierValidationException("Service introuvable."));
-        if (!estServiceOdcDivision(service) && !estDirectionOdc(service)) {
-            throw new CourrierValidationException("Service non reconnu dans la division Orange Digital Center.");
-        }
-        Entite ancienne = courrier.getEntite();
-        courrier.setServiceOdcAffecte(service);
-        courrier.setEntite(service);
-        if (note != null && !note.isBlank()) {
-            courrier.setNoteResponsableOdk(note.trim());
-        }
-        courrier.setStatut(StatutCourrier.ENVOYER);
-        courrierRepository.save(courrier);
-        historiqueSimple(courrier, service, StatutCourrier.ENVOYER,
-                "Affecté au service : " + service.getNom() + (note != null ? " — " + note : ""));
-        notifierEntiteResponsable(courrier, service);
-        return courrier;
+        throw new CourrierValidationException(
+                "Le responsable ODK ne traite plus les courriers dans l'application. "
+                        + "Le directeur ODC délègue physiquement puis saisit la réponse officielle.");
     }
 
     public boolean requiertValidationReponseDirecteurOdc(Courrier courrier) {
@@ -643,6 +661,39 @@ public class CourrierService {
         return cible != null && estDirectionOdc(cible);
     }
 
+    /**
+     * Finalise une réponse saisie par le directeur ODC (décharge DCIRE ou retour direct si flux interne).
+     */
+    @Transactional
+    public Courrier appliquerReponseDirecteurOdcValidee(Long courrierId) {
+        Courrier courrier = getCourrier(courrierId);
+        reponseCourrierRepository.findReponsesByCourrierId(courrierId).stream()
+                .filter(r -> !Boolean.TRUE.equals(r.getValideeDirecteurOdc()))
+                .forEach(r -> {
+                    r.setValideeDirecteurOdc(true);
+                    r.setStatut(StatutCourrier.REPONDU);
+                    reponseCourrierRepository.save(r);
+                });
+        if (requiertDechargeDcirePourReponse(courrier)) {
+            Entite dcire = resolveDcireDirectionOptional()
+                    .orElseThrow(() -> new CourrierValidationException("Direction DCIRE introuvable."));
+            courrier.setEntite(dcire);
+            courrier.setStatut(StatutCourrier.TRANSMIS_DCIRE);
+            courrierRepository.save(courrier);
+            historiqueSimple(courrier, dcire, StatutCourrier.TRANSMIS_DCIRE,
+                    "Réponse directeur ODC — transmission à la DCIRE pour décharge / scan avant envoi");
+            notifierDirecteursDcireDechargeReponse(courrier, dcire);
+            return courrier;
+        }
+        courrier.setStatut(StatutCourrier.REPONDU);
+        resolveDcireDirectionOptional().ifPresent(courrier::setEntite);
+        courrierRepository.save(courrier);
+        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.REPONDU,
+                "Réponse directeur ODC — retour direct à la DCIRE (courrier interne division)");
+        notifierDirecteursDcireHub(courrier, courrier.getEntite());
+        return courrier;
+    }
+
     @Transactional
     public Courrier validerReponseParDirecteurOdc(Long courrierId, String suggestion) {
         Courrier courrier = getCourrier(courrierId);
@@ -651,19 +702,146 @@ public class CourrierService {
         }
         if (suggestion != null && !suggestion.isBlank()) {
             courrier.setSuggestionDirecteur(suggestion.trim());
+            Entite odc = courrier.getDirectionInitial();
+            if (odc == null || !estDirectionOdc(odc)) {
+                odc = entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                        .filter(this::estDirectionOdc)
+                        .filter(e -> !nomIndiqueDcire(e))
+                        .findFirst()
+                        .orElse(courrier.getEntite());
+            }
+            courrier.setEntite(odc);
+            courrier.setStatut(StatutCourrier.ENVOYER);
+            courrierRepository.save(courrier);
+            historiqueSimple(courrier, odc, StatutCourrier.ENVOYER,
+                    "Note directeur ODC (révision hors application) : " + suggestion.trim());
+            return courrier;
         }
-        reponseCourrierRepository.findReponsesByCourrierId(courrierId).stream()
-                .filter(r -> !Boolean.TRUE.equals(r.getValideeDirecteurOdc()))
-                .forEach(r -> {
-                    r.setValideeDirecteurOdc(true);
-                    r.setStatut(StatutCourrier.REPONDU);
-                    reponseCourrierRepository.save(r);
-                });
-        courrier.setStatut(StatutCourrier.REPONDU);
+        return appliquerReponseDirecteurOdcValidee(courrierId);
+    }
+
+    /**
+     * Courrier émis par la DCIRE (KEÏTA) vers l'ODC : réponse sans circuit décharge / scan.
+     */
+    public boolean estCourrierFluxInterneDcireVersOdc(Courrier courrier) {
+        if (courrier == null || courrier.getStructureOrigine() == null) {
+            return false;
+        }
+        Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
+        if (dcireOpt.isEmpty()) {
+            return false;
+        }
+        if (!Objects.equals(dcireOpt.get().getId(), courrier.getStructureOrigine().getId())) {
+            return false;
+        }
+        String exp = courrier.getExpediteur() != null
+                ? courrier.getExpediteur().toUpperCase(Locale.ROOT)
+                : "";
+        return exp.contains("KEÏTA") || exp.contains("DCIRE");
+    }
+
+    /** Réponse ODC devant passer par la DCIRE (décharge) avant envoi physique. */
+    public boolean requiertDechargeDcirePourReponse(Courrier courrier) {
+        return !estCourrierFluxInterneDcireVersOdc(courrier);
+    }
+
+    @Transactional
+    public Courrier deleguerCourrierAuServiceParDirecteurOdc(Long courrierId, Long serviceEntiteId, String note) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.ENVOYER && courrier.getStatut() != StatutCourrier.IMPUTER) {
+            throw new CourrierValidationException(
+                    "Seuls les courriers reçus au directeur ODC peuvent être délégués à une entité.");
+        }
+        Entite service = entiteRepository.findById(serviceEntiteId)
+                .orElseThrow(() -> new CourrierValidationException("Entité ODC introuvable."));
+        if (!estServiceOdcDivision(service) && !estDirectionOdc(service)) {
+            throw new CourrierValidationException("Entité non reconnue dans la division Orange Digital Center.");
+        }
+        Entite ancienne = courrier.getEntite();
+        courrier.setServiceOdcAffecte(service);
+        courrier.setEntite(service);
+        if (note != null && !note.isBlank()) {
+            courrier.setNoteResponsableOdk(note.trim());
+        }
+        courrier.setStatut(StatutCourrier.IMPUTER);
         courrierRepository.save(courrier);
-        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.REPONDU,
-                "Réponse validée par le directeur ODC");
+        historiqueSimple(courrier, service, StatutCourrier.IMPUTER,
+                "Délégué par le directeur ODC à : " + service.getNom()
+                        + (note != null && !note.isBlank() ? " — " + note.trim() : ""));
+        notifierEntiteResponsable(courrier, service);
         return courrier;
+    }
+
+    /** DCIRE : décharge / scan validés — retour du courrier-réponse à l'ODC pour envoi physique. */
+    @Transactional
+    public Courrier validerDechargeReponseParDcire(Long courrierId, Utilisateur principal) {
+        Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
+        if (u.getRole() == null || !"DIRECTEUR".equalsIgnoreCase(u.getRole().getNom().trim())) {
+            throw new CourrierValidationException("Action réservée au directeur DCIRE.");
+        }
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.TRANSMIS_DCIRE) {
+            throw new CourrierValidationException("Ce courrier n'est pas en attente de décharge à la DCIRE.");
+        }
+        Entite odc = courrier.getDirectionInitial();
+        if (odc == null || !estDirectionOdc(odc)) {
+            odc = entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+                    .filter(this::estDirectionOdc)
+                    .filter(e -> !nomIndiqueDcire(e))
+                    .findFirst()
+                    .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable pour le retour."));
+        }
+        Entite ancienne = courrier.getEntite();
+        courrier.setEntite(odc);
+        courrier.setStatut(StatutCourrier.ENVOYER);
+        courrierRepository.save(courrier);
+        historiqueSimple(courrier, odc, StatutCourrier.ENVOYER,
+                "DCIRE : décharge validée / scan enregistré — retour ODC pour envoi physique");
+        notifierDirecteursOdcNouveauCourrier(courrier);
+        return courrier;
+    }
+
+    /** Directeur ODC : envoi physique effectué (expéditeur externe géré hors application). */
+    @Transactional
+    public Courrier confirmerEnvoiPhysiqueParDirecteurOdc(Long courrierId) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.ENVOYER && courrier.getStatut() != StatutCourrier.REPONDU) {
+            throw new CourrierValidationException("Ce courrier n'est pas prêt pour clôture d'envoi physique.");
+        }
+        courrier.setStatut(StatutCourrier.ARCHIVER);
+        courrier.setDateArchivage(new Date());
+        courrierRepository.save(courrier);
+        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.ARCHIVER,
+                "Directeur ODC : envoi physique confirmé (expéditeur externe hors application)");
+        return courrier;
+    }
+
+    private void notifierDirecteursDcireDechargeReponse(Courrier courrier, Entite dcire) {
+        LinkedHashSet<String> emails = new LinkedHashSet<>();
+        if (dcire != null && dcire.getResponsable() != null && dcire.getResponsable().getEmail() != null) {
+            emails.add(dcire.getResponsable().getEmail().trim());
+        }
+        for (Utilisateur u : utilisateurRepository.findByRole_Nom("DIRECTEUR")) {
+            if (u.getEmail() != null && !u.getEmail().isBlank()) {
+                emails.add(u.getEmail().trim());
+            }
+        }
+        if (emails.isEmpty()) {
+            return;
+        }
+        String lien = lienFrontendHash("courrier");
+        String sujet = "[Courrier] Décharge / scan requis — " + courrier.getNumero();
+        String corps = "<p>L'ODC a validé une réponse. Merci d'enregistrer la décharge et le scan avant retour ODC.</p>"
+                + "<p><strong>Objet :</strong> " + escapeHtmlCourrier(courrier.getObjet()) + "</p>"
+                + "<p><a href=\"" + lien + "\">Ouvrir</a></p>";
+        String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
+        for (String em : emails) {
+            try {
+                emailService.sendSimpleEmail(em, sujet, html);
+            } catch (RuntimeException ex) {
+                log.warn("E-mail décharge DCIRE non envoyé (courrier id={}) : {}", courrier.getId(), ex.getMessage());
+            }
+        }
     }
 
     public List<Courrier> listerCourriersReponseEnAttenteDirecteurOdc() {
@@ -1336,6 +1514,7 @@ public class CourrierService {
         historique.setNouvelleEntite(odc);
         historiqueRepository.save(historique);
 
+        notifierDirecteursOdcNouveauCourrier(courrier);
         return courrier;
     }
 
@@ -1428,6 +1607,9 @@ public class CourrierService {
             emails.add(cible.getResponsable().getEmail().trim());
         }
         String roleAttendu = roleNomPourDestinataireStructure(dest);
+        if (roleAttendu == null && cible.getNom() != null) {
+            roleAttendu = roleNomDepuisNomDirection(cible.getNom());
+        }
         if (roleAttendu != null) {
             for (Utilisateur u : utilisateurRepository.findByEntite_Id(cible.getId())) {
                 if (u.getRole() != null
@@ -1460,13 +1642,90 @@ public class CourrierService {
         }
     }
 
+    /** Notification Fondation / RSE / DCI : courrier déjà reçu (pas d’étape validation type ODC). */
+    private void notifierDirecteursStructureReception(Courrier courrier, DestinataireCourrierOdc dest) {
+        if (courrier.getEntite() == null || courrier.getEntite().getId() == null) {
+            return;
+        }
+        Entite cible = entiteRepository.findById(courrier.getEntite().getId()).orElse(courrier.getEntite());
+        LinkedHashSet<String> emails = new LinkedHashSet<>();
+        if (cible.getResponsable() != null
+                && cible.getResponsable().getEmail() != null
+                && !cible.getResponsable().getEmail().isBlank()) {
+            emails.add(cible.getResponsable().getEmail().trim());
+        }
+        String roleAttendu = roleNomPourDestinataireStructure(dest);
+        if (roleAttendu == null && cible.getNom() != null) {
+            roleAttendu = roleNomDepuisNomDirection(cible.getNom());
+        }
+        if (roleAttendu != null) {
+            for (Utilisateur u : utilisateurRepository.findByEntite_Id(cible.getId())) {
+                if (u.getRole() != null
+                        && roleAttendu.equals(u.getRole().getNom())
+                        && u.getEmail() != null
+                        && !u.getEmail().isBlank()) {
+                    emails.add(u.getEmail().trim());
+                }
+            }
+        }
+        if (emails.isEmpty()) {
+            log.warn(
+                    "Aucun e-mail pour notifier la réception structure (courrier id={}, entite id={})",
+                    courrier.getId(),
+                    cible.getId());
+            return;
+        }
+        String lien = lienFrontendHash("structure/courriers");
+        String sujet = "[Courrier] Nouveau courrier reçu — " + courrier.getNumero();
+        String corps = "<p>La DCIRE vous a adressé un courrier, disponible dans votre espace (réception / réponse).</p>"
+                + "<p><strong>Objet :</strong> " + escapeHtmlCourrier(courrier.getObjet()) + "</p>"
+                + "<p><a href=\"" + lien + "\">Ouvrir Gestion Courriers</a></p>";
+        String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
+        for (String em : emails) {
+            try {
+                emailService.sendSimpleEmail(em, sujet, html);
+            } catch (RuntimeException ex) {
+                log.warn("E-mail réception structure non envoyé (courrier id={}) : {}", courrier.getId(), ex.getMessage());
+            }
+        }
+    }
+
     private static String roleNomPourDestinataireStructure(DestinataireCourrierOdc dest) {
+        if (dest == null) {
+            return null;
+        }
         return switch (dest) {
             case FONDATION -> "DIRECTEUR_FONDATION";
             case RSE -> "DIRECTEUR_RSE";
             case DCI -> "DIRECTEUR_DCI";
             default -> null;
         };
+    }
+
+    private static DestinataireCourrierOdc destinataireStructureDepuisDirection(Entite direction) {
+        if (direction == null || direction.getNom() == null) {
+            return null;
+        }
+        String n = direction.getNom().toUpperCase(Locale.ROOT);
+        if (n.contains("FONDATION")) {
+            return DestinataireCourrierOdc.FONDATION;
+        }
+        if (n.contains("RSE")) {
+            return DestinataireCourrierOdc.RSE;
+        }
+        if (n.contains("DCI") && !n.contains("DCIRE")) {
+            return DestinataireCourrierOdc.DCI;
+        }
+        return null;
+    }
+
+    private static String roleNomDepuisNomDirection(String nomDirection) {
+        if (nomDirection == null || nomDirection.isBlank()) {
+            return null;
+        }
+        Entite stub = new Entite();
+        stub.setNom(nomDirection);
+        return roleNomPourDestinataireStructure(destinataireStructureDepuisDirection(stub));
     }
 
     private Entite resolveDcireDirection() {
@@ -1491,9 +1750,15 @@ public class CourrierService {
             }
             return Optional.of(e);
         }
-        return entiteRepository.findByType(TypeEntite.DIRECTION).stream()
+        Optional<Entite> byNom = entiteRepository.findByType(TypeEntite.DIRECTION).stream()
                 .filter(this::nomIndiqueDcire)
                 .findFirst();
+        if (byNom.isPresent()) {
+            return byNom;
+        }
+        return utilisateurRepository.findByEmail("dcire@gmail.com")
+                .map(Utilisateur::getEntite)
+                .filter(e -> e != null && e.getId() != null && e.getType() == TypeEntite.DIRECTION);
     }
 
     private boolean nomIndiqueDcire(Entite e) {
@@ -1723,7 +1988,13 @@ public class CourrierService {
             Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
             if (dcireOpt.isPresent()) {
                 Entite dcire = dcireOpt.get();
-                return c.getEntite() != null && Objects.equals(dcire.getId(), c.getEntite().getId());
+                if (c.getEntite() != null && Objects.equals(dcire.getId(), c.getEntite().getId())) {
+                    return true;
+                }
+                if (c.getStructureOrigine() != null && Objects.equals(dcire.getId(), c.getStructureOrigine().getId())) {
+                    return true;
+                }
+                return false;
             }
             // Mode profil : le hub gère les flux externes.
             return c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE;
