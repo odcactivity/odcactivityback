@@ -73,6 +73,21 @@ public class ActiviteController {
         return activiteMapper.listeActivite(activiteService.listerEnAttenteValidationDirecteurOdc());
     }
 
+    @GetMapping("/calendrier")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    public List<ActiviteDTO> listerPourCalendrier() {
+        return activiteMapper.listeActivite(activiteService.listerPourCalendrier());
+    }
+
+    @DeleteMapping("/directeur-odc/{id}")
+    @PreAuthorize("hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Map<String, String>> supprimerParDirecteurOdc(@PathVariable Long id) {
+        activiteService.supprimerParDirecteurOdc(id);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Activité supprimée.");
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/directeur-odc/historique-validees")
     @PreAuthorize("hasRole('DIRECTEUR_ODC')")
     public List<ActiviteDTO> historiqueValideesDirecteurOdc() {
@@ -130,6 +145,21 @@ public class ActiviteController {
     @PreAuthorize("hasRole('RESPONSABLE_ODK')")
     public List<ActiviteDTO> listerEnAttenteResponsableOdk() {
         return activiteMapper.listeActivite(activiteService.listerEnAttenteResponsableOdk());
+    }
+
+    @GetMapping("/responsable-odk/transmises-directeur")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public List<ActiviteDTO> listerTransmisesDirecteurParResponsableOdk() {
+        return activiteMapper.listeActivite(activiteService.listerTransmisesDirecteurOdcParResponsable());
+    }
+
+    @DeleteMapping("/responsable-odk/{id}")
+    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    public ResponseEntity<Map<String, String>> supprimerParResponsableOdk(@PathVariable Long id) {
+        activiteService.supprimerParResponsableOdk(id);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Activité supprimée.");
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/transmettre-directeur-odc")

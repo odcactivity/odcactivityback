@@ -33,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -247,9 +248,9 @@ public void envoiMail(Activite activiteCree){
                     "Cette activité n'est pas en attente chez le responsable ODK.");
         }
         a.setNoteResponsableOdk(note != null ? note.trim() : "");
-        a.setStatut(Statut.Rejetee);
-        a.setDirecteurOdcDecision(DecisionDirecteurOdc.REFUSEE);
-        a.setDirecteurOdcTraiteLe(new Date());
+        a.setDirecteurOdcDecision(null);
+        a.setDirecteurOdcTraiteLe(null);
+        a.setStatut(Statut.En_Cours);
         Activite saved = activiteRepository.save(a);
         if (saved.getCreatedBy() != null && saved.getCreatedBy().getEmail() != null) {
             String sujet = "[ODC Activité] À corriger : " + saved.getNom();
@@ -263,6 +264,63 @@ public void envoiMail(Activite activiteCree){
 
     public List<Activite> listerEnAttenteResponsableOdk() {
         return activiteRepository.findByStatut(Statut.En_Validation_Responsable_ODK);
+    }
+
+    public List<Activite> listerTransmisesDirecteurOdcParResponsable() {
+        return activiteRepository.findByStatut(Statut.En_Validation_Directeur_ODC);
+    }
+
+    @Transactional
+    public void supprimerParResponsableOdk(Long activiteId) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Seules les activités transmises au directeur ODC peuvent être supprimées par le responsable ODK.");
+        }
+        activiteRepository.delete(a);
+    }
+
+    /** Après correction personnel suite à un retour responsable ODK → renvoi en validation responsable. */
+    private void renvoyerAuResponsableOdkSiCorrectionPersonnel(Activite a) {
+        boolean noteCorrection = a.getNoteResponsableOdk() != null && !a.getNoteResponsableOdk().isBlank();
+        boolean statutCorrigeable = a.getStatut() == Statut.En_Cours || a.getStatut() == Statut.En_Attente;
+        if (noteCorrection && statutCorrigeable) {
+            a.setStatut(Statut.En_Validation_Responsable_ODK);
+            try {
+                envoiMailResponsableOdkPourActivite(a);
+            } catch (RuntimeException mailEx) {
+                log.warn("Notification responsable ODK ignorée (activité id={}) : {}", a.getId(), mailEx.getMessage());
+            }
+        }
+    }
+
+    private void assertPersonnelEstCreateurEtPeutModifier(Activite a, Utilisateur utilisateur) {
+        if (a.getCreatedBy() == null || utilisateur == null
+                || a.getCreatedBy().getId() == null
+                || !Objects.equals(a.getCreatedBy().getId(), utilisateur.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Vous n'avez pas le droit de modifier cette activité.");
+        }
+        if (a.getStatut() == Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Cette activité est en validation chez le directeur ODC et ne peut pas être modifiée.");
+        }
+        if (a.getStatut() == Statut.En_Validation_Responsable_ODK) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Cette activité est en validation chez le responsable ODK. Modifiez-la uniquement après un retour pour correction.");
+        }
+    }
+
+    @Transactional
+    public void supprimerParDirecteurOdc(Long activiteId) {
+        Activite a = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Seules les activités en attente de validation directeur ODC peuvent être supprimées.");
+        }
+        activiteRepository.delete(a);
     }
 
     @Transactional
@@ -368,6 +426,13 @@ public void envoiMail(Activite activiteCree){
         return activiteRepository.findByStatut(Statut.En_Validation_Directeur_ODC);
     }
 
+    /** Activités affichées sur le calendrier : uniquement après validation directeur ODC. */
+    public List<Activite> listerPourCalendrier() {
+        return activiteRepository.findAll().stream()
+                .filter(a -> a.getDirecteurOdcDecision() == DecisionDirecteurOdc.VALIDEE)
+                .collect(Collectors.toList());
+    }
+
     public List<Activite> listerHistoriqueValideesParDirecteurOdc() {
         return activiteRepository.findByDirecteurOdcDecisionOrderByDirecteurOdcTraiteLeDesc(DecisionDirecteurOdc.VALIDEE);
     }
@@ -412,10 +477,7 @@ public void envoiMail(Activite activiteCree){
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé"));
 
         return activiteRepository.findById(id).map(a -> {
-            // Vérifier que l'utilisateur connecté est le créateur de l'activité
-            if (!a.getCreatedBy().getEmail().equals(utilisateur.getEmail())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Vous n'êtes pas autorisé à modifier cette activité.");
-            }
+            assertPersonnelEstCreateurEtPeutModifier(a, utilisateur);
 
             // Mettre à jour les champs modifiables
             if (activite.getNom() != null) {
@@ -460,6 +522,7 @@ public void envoiMail(Activite activiteCree){
             updateEtapes(a, activite.getEtapes());*/
 
             // Mettre à jour le statut
+            renvoyerAuResponsableOdkSiCorrectionPersonnel(a);
             a.mettreAJourStatut();
 
             // Sauvegarder les modifications
@@ -475,11 +538,7 @@ public Activite updateDTO(ActiviteDTO activite, List<Long> etapesids, Long id) {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé"));
 
     return activiteRepository.findById(id).map(a -> {
-
-        // Vérification propriétaire
-        if (!a.getCreatedBy().getEmail().equals(utilisateur.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vous n'avez pas le droit de modifier cette activité");
-        }
+        assertPersonnelEstCreateurEtPeutModifier(a, utilisateur);
 
         // Mise à jour des champs (MapStruct)
         activiteMapper.updateFromDto(activite, a);
@@ -498,9 +557,9 @@ public Activite updateDTO(ActiviteDTO activite, List<Long> etapesids, Long id) {
         }
 
         // Mise à jour du statut
+        renvoyerAuResponsableOdkSiCorrectionPersonnel(a);
         a.mettreAJourStatut();
-return a;
-//        return activiteRepository.save(a); // on sauvegarde directement l'entité
+        return activiteRepository.save(a);
     }).orElseThrow(() ->
             new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable")
     );

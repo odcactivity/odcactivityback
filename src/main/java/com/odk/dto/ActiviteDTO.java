@@ -43,6 +43,10 @@ public class ActiviteDTO {
     private Integer candidatureFemme;
     private Integer cible;
 
+    /** Note du responsable ODK lors d'un retour au personnel pour correction */
+    private String noteResponsableOdk;
+    private String suggestionDirecteurOdc;
+
     //    private List<ParticipantDTO> listeDebut; // Liste de participants pour l'étape de début
 //    private List<ParticipantDTO> listeResultat; // Liste de participants pour l'étape de résultat
    private List<ActiviteValidationDTO> activitevalidation;

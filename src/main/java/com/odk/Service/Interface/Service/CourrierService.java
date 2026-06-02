@@ -9,6 +9,7 @@ import java.nio.file.Paths;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -547,9 +548,6 @@ public class CourrierService {
         courrier.setNumero(dto.getNumero());
         courrier.setObjet(dto.getObjet());
         courrier.setExpediteur(dto.getExpediteur());
-        courrier.setStructureOrigine(odcDir);
-        courrier.setDirectionInitial(odcDir);
-        courrier.setEntite(odcDir);
         courrier.setDestinataireOdc(DestinataireCourrierOdc.fromParam(dto.getDestinataireOdc()));
         if (dto.getExternePrecision() != null && !dto.getExternePrecision().isBlank()) {
             courrier.setExternePrecision(dto.getExternePrecision().trim());
