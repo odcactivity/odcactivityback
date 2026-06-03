@@ -444,6 +444,7 @@ public class CourrierService {
                     StatutCourrier.IMPUTER,
                     StatutCourrier.EN_COURS,
                     StatutCourrier.TRANSMIS_DCIRE,
+                    StatutCourrier.REPONDU,
                     StatutCourrier.EN_REVISION_ADMIN_COURRIER,
                     StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE,
                     StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_ODC,
@@ -728,11 +729,9 @@ public class CourrierService {
         return appliquerReponseDirecteurOdcValidee(courrierId);
     }
 
-    /**
-     * Courrier émis par la DCIRE (KEÏTA) vers l'ODC : réponse sans circuit décharge / scan.
-     */
-    public boolean estCourrierFluxInterneDcireVersOdc(Courrier courrier) {
-        if (courrier == null || courrier.getStructureOrigine() == null) {
+    /** Courrier émis par la DCIRE vers une direction ODC (hub division → pilier ODC). */
+    public boolean estCourrierEmissionDcireVersOdc(Courrier courrier) {
+        if (courrier == null || courrier.getStructureOrigine() == null || courrier.getDirectionInitial() == null) {
             return false;
         }
         Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
@@ -740,6 +739,16 @@ public class CourrierService {
             return false;
         }
         if (!Objects.equals(dcireOpt.get().getId(), courrier.getStructureOrigine().getId())) {
+            return false;
+        }
+        return estDirectionOdc(courrier.getDirectionInitial());
+    }
+
+    /**
+     * Courrier émis par la DCIRE (KEÏTA) vers l'ODC : réponse sans circuit décharge / scan.
+     */
+    public boolean estCourrierFluxInterneDcireVersOdc(Courrier courrier) {
+        if (!estCourrierEmissionDcireVersOdc(courrier)) {
             return false;
         }
         String exp = courrier.getExpediteur() != null

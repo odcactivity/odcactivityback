@@ -40,7 +40,7 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     @Query("SELECT c FROM Courrier c WHERE c.statut IN :statuts AND (" +
             "(c.structureOrigine IS NOT NULL AND c.structureOrigine.id = :dirId) OR " +
-            "(c.structureOrigine IS NULL AND c.directionInitial IS NOT NULL AND c.directionInitial.id = :dirId) OR " +
+            "(c.directionInitial IS NOT NULL AND c.directionInitial.id = :dirId) OR " +
             "(c.entite IS NOT NULL AND c.entite.id = :dirId) OR " +
             "(c.entite IS NOT NULL AND c.entite.parent IS NOT NULL AND c.entite.parent.id = :dirId)" +
             ") ORDER BY c.dateReception DESC")

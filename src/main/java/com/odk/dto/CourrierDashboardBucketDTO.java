@@ -19,5 +19,6 @@ public class CourrierDashboardBucketDTO {
     private long enAttente;
     private long recu;
     private long valide;
+    private long nonRepondu;
     private List<CourrierDashboardDetailRowDTO> details = new ArrayList<>();
 }

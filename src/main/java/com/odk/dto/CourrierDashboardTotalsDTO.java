@@ -13,4 +13,6 @@ public class CourrierDashboardTotalsDTO {
     private long enAttente;
     private long recu;
     private long valide;
+    /** Flux DCIRE → ODC : en attente de réponse du directeur ODC. */
+    private long nonRepondu;
 }

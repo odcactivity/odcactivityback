@@ -56,7 +56,7 @@ public class CourrierDashboardService {
     };
 
     private enum Cat {
-        emis, repondu, enAttente, recu, valide
+        emis, repondu, enAttente, recu, valide, nonRepondu
     }
 
     private final CourrierRepository courrierRepository;
@@ -77,17 +77,23 @@ public class CourrierDashboardService {
         }
         for (Courrier c : list) {
             try {
-                categorieDepuisHistorique(c, scope, histByCourrierId).ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+                categorieDepuisHistorique(c, scope, histByCourrierId, principal)
+                        .ifPresent(cat -> m.merge(cat, 1L, Long::sum));
             } catch (RuntimeException ex) {
                 // Ne bloque pas le dashboard pour un courrier incohérent.
             }
+        }
+        long recu = m.get(Cat.recu);
+        if (isOdcProductDashboardRole(principal) && scope == DashboardScope.ODC) {
+            recu = m.get(Cat.nonRepondu) + m.get(Cat.repondu);
         }
         return new CourrierDashboardTotalsDTO(
                 m.get(Cat.emis),
                 m.get(Cat.repondu),
                 m.get(Cat.enAttente),
-                m.get(Cat.recu),
-                m.get(Cat.valide));
+                recu,
+                m.get(Cat.valide),
+                m.get(Cat.nonRepondu));
     }
 
     public CourrierDashboardSerieDTO serie(String periode, Long structureId, Utilisateur principal) {
@@ -119,7 +125,7 @@ public class CourrierDashboardService {
                     if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
                         continue;
                     }
-                    Optional<Cat> cat = categorieDepuisHistorique(c, scope, histByCourrierId);
+                    Optional<Cat> cat = categorieDepuisHistorique(c, scope, histByCourrierId, principal);
                     if (cat.isEmpty()) {
                         continue;
                     }
@@ -129,11 +135,15 @@ public class CourrierDashboardService {
                         case enAttente -> row.setEnAttente(row.getEnAttente() + 1);
                         case recu -> row.setRecu(row.getRecu() + 1);
                         case valide -> row.setValide(row.getValide() + 1);
+                        case nonRepondu -> row.setNonRepondu(row.getNonRepondu() + 1);
                     }
                     safeDetailRow(c, cat.get()).ifPresent(d -> row.getDetails().add(d));
                 } catch (RuntimeException ex) {
                     // Skip d'un enregistrement invalide, sans interrompre toute la série.
                 }
+            }
+            if (isOdcProductDashboardRole(principal) && scope == DashboardScope.ODC) {
+                row.setRecu(row.getNonRepondu() + row.getRepondu());
             }
             dto.getBuckets().add(row);
         }
@@ -215,15 +225,50 @@ public class CourrierDashboardService {
         return receptionDate(c);
     }
 
+    /** Admin / superadmin / directeur ODC : même dashboard courrier produit ODC. */
+    private boolean isOdcProductDashboardRole(Utilisateur principal) {
+        if (principal == null || principal.getRole() == null || principal.getRole().getNom() == null) {
+            return false;
+        }
+        String role = principal.getRole().getNom().trim().toUpperCase(Locale.ROOT);
+        return "DIRECTEUR_ODC".equals(role) || "ADMIN".equals(role) || "SUPERADMIN".equals(role);
+    }
+
+    private Optional<Cat> categorieFluxDcireVersOdcPourOdc(Courrier c, StatutCourrier statutCourant, Utilisateur principal) {
+        if (!courrierService.estCourrierEmissionDcireVersOdc(c) || statutCourant == null) {
+            return Optional.empty();
+        }
+        if (statutCourant == StatutCourrier.REPONDU || statutCourant == StatutCourrier.TRANSMIS_DCIRE) {
+            return Optional.of(Cat.repondu);
+        }
+        if (statutCourant == StatutCourrier.ENVOYER
+                || statutCourant == StatutCourrier.IMPUTER
+                || statutCourant == StatutCourrier.EN_COURS
+                || statutCourant == StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC) {
+            if (isOdcProductDashboardRole(principal)) {
+                return Optional.of(Cat.nonRepondu);
+            }
+            return Optional.of(Cat.recu);
+        }
+        return Optional.empty();
+    }
+
     private Optional<Cat> categorieDepuisHistorique(
             Courrier c,
             DashboardScope scope,
-            Map<Long, List<HistoriqueCourrier>> histByCourrierId) {
+            Map<Long, List<HistoriqueCourrier>> histByCourrierId,
+            Utilisateur principal) {
         StatutCourrier statutCourant = c != null ? c.getStatut() : null;
         // La source de vérité doit rester le statut courant du courrier
         // (l'historique peut être incomplet sur certains anciens enregistrements).
         if (statutCourant == StatutCourrier.ARCHIVER) {
             return Optional.empty();
+        }
+        if (scope == DashboardScope.ODC) {
+            Optional<Cat> fluxOdc = categorieFluxDcireVersOdcPourOdc(c, statutCourant, principal);
+            if (fluxOdc.isPresent()) {
+                return fluxOdc;
+            }
         }
         if (statutCourant == StatutCourrier.REPONDU) {
             return Optional.of(Cat.repondu);
@@ -267,7 +312,6 @@ public class CourrierDashboardService {
             return Optional.of(Cat.valide);
         }
         if (s == StatutCourrier.TRANSMIS_DCIRE) {
-            // Pour le hub DCIRE, TRANSMIS_DCIRE correspond à un courrier reçu au hub.
             if (scope == DashboardScope.DCIRE) {
                 return Optional.of(Cat.recu);
             }
@@ -531,6 +575,7 @@ public class CourrierDashboardService {
             case enAttente -> "En attente";
             case recu -> "Reçu";
             case valide -> "Validé";
+            case nonRepondu -> "Non répondus";
         };
     }
 
