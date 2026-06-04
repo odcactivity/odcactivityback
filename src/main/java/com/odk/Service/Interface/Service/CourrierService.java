@@ -657,6 +657,12 @@ public class CourrierService {
         if (courrier == null) {
             return false;
         }
+        if (estCourrierEmissionDcireVersOdc(courrier)) {
+            return true;
+        }
+        if (courrier.getStructureOrigine() != null && nomIndiqueDcire(courrier.getStructureOrigine())) {
+            return false;
+        }
         if (courrier.getServiceOdcAffecte() != null) {
             return true;
         }

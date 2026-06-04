@@ -84,11 +84,16 @@ public class CourrierDashboardService {
             }
         }
         long recu = m.get(Cat.recu);
+        long emis = m.get(Cat.emis);
         if (isOdcProductDashboardRole(principal) && scope == DashboardScope.ODC) {
             recu = m.get(Cat.nonRepondu) + m.get(Cat.repondu);
         }
+        if (scope == DashboardScope.DCIRE) {
+            emis = m.get(Cat.nonRepondu) + m.get(Cat.repondu);
+            recu = 0L;
+        }
         return new CourrierDashboardTotalsDTO(
-                m.get(Cat.emis),
+                emis,
                 m.get(Cat.repondu),
                 m.get(Cat.enAttente),
                 recu,
@@ -144,6 +149,10 @@ public class CourrierDashboardService {
             }
             if (isOdcProductDashboardRole(principal) && scope == DashboardScope.ODC) {
                 row.setRecu(row.getNonRepondu() + row.getRepondu());
+            }
+            if (scope == DashboardScope.DCIRE) {
+                row.setEmis(row.getNonRepondu() + row.getRepondu());
+                row.setRecu(0L);
             }
             dto.getBuckets().add(row);
         }
@@ -291,8 +300,17 @@ public class CourrierDashboardService {
         if (scope == DashboardScope.DCIRE) {
             Long dcireId = resolveDcireDirectionIdForDashboard();
             if (dcireId != null && estCourrierEmisParStructure(c, dcireId)) {
-                return Optional.of(Cat.emis);
+                if (statutCourant == StatutCourrier.REPONDU || statutCourant == StatutCourrier.TRANSMIS_DCIRE) {
+                    return Optional.of(Cat.repondu);
+                }
+                if (statutCourant == StatutCourrier.ENVOYER
+                        || statutCourant == StatutCourrier.IMPUTER
+                        || statutCourant == StatutCourrier.EN_COURS) {
+                    return Optional.of(Cat.nonRepondu);
+                }
+                return Optional.empty();
             }
+            return Optional.empty();
         }
         if (scope == DashboardScope.STRUCTURE) {
             if (s == StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE
@@ -575,7 +593,7 @@ public class CourrierDashboardService {
             case enAttente -> "En attente";
             case recu -> "Reçu";
             case valide -> "Validé";
-            case nonRepondu -> "Non répondus";
+            case nonRepondu -> "Non répondu";
         };
     }
 

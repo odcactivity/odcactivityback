@@ -53,6 +53,8 @@ public class ReponseCourrierService {
         boolean fluxOdcDirecteur = courrierService.requiertValidationReponseDirecteurOdc(courrier);
         if (fluxOdcDirecteur) {
             verifierDirecteurOdc(auteur);
+        } else if (auteur != null && auteur.getRole() != null) {
+            verifierPeutRepondreStructure(auteur);
         }
 
         // Validation des fichiers joints
@@ -119,6 +121,22 @@ public class ReponseCourrierService {
                     "Seul le directeur ODC peut répondre aux courriers de la division Orange Digital Center. "
                             + "La préparation par les responsables d'entité se fait hors application.");
         }
+    }
+
+    private void verifierPeutRepondreStructure(Utilisateur auteur) {
+        if (auteur == null || auteur.getRole() == null || auteur.getRole().getNom() == null) {
+            throw new CourrierValidationException("Profil non autorisé à répondre aux courriers.");
+        }
+        String role = auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT);
+        if ("DIRECTEUR_FONDATION".equals(role)
+                || "DIRECTEUR_RSE".equals(role)
+                || "DIRECTEUR_DCI".equals(role)
+                || "SUPERADMIN".equals(role)
+                || "ADMIN".equals(role)) {
+            return;
+        }
+        throw new CourrierValidationException(
+                "Seules les directions Fondation, RSE et DCI peuvent répondre aux courriers reçus de la DCIRE.");
     }
 
     /**
