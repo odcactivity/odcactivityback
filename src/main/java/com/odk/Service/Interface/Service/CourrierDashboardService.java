@@ -70,6 +70,8 @@ public class CourrierDashboardService {
     public CourrierDashboardTotalsDTO totaux(Long structureId, Utilisateur principal) {
         DashboardScope scope = resolveScope(structureId, principal);
         List<Courrier> list = loadCourriersPourScope(scope, principal);
+        Long effectiveId = resolveEffectiveStructureId(structureId, principal);
+        applyCourrierDashboardStructureFilter(list, effectiveId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
         EnumMap<Cat, Long> m = new EnumMap<>(Cat.class);
         for (Cat c : Cat.values()) {
@@ -105,6 +107,8 @@ public class CourrierDashboardService {
         String p = periode == null ? "semaine" : periode.trim().toLowerCase(Locale.ROOT);
         DashboardScope scope = resolveScope(structureId, principal);
         List<Courrier> list = loadCourriersPourScope(scope, principal);
+        Long effectiveId = resolveEffectiveStructureId(structureId, principal);
+        applyCourrierDashboardStructureFilter(list, effectiveId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
 
         LocalDate today = LocalDate.now(TZ);

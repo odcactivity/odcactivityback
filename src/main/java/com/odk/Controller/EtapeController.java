@@ -70,7 +70,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
 }
     
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<List<EtapeDTO>> getAllEtapes() {
         List<EtapeDTO> letap=etapeService.getAllEtapes();
@@ -79,7 +79,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
         return ResponseEntity.ok(letap); // Utilise le service pour récupérer les étapes sous forme de DTO
     }
     @GetMapping("/sansactivite")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<List<EtapeDTOSansActivite>> getAllEtapesSansActivite() {
         List<EtapeDTOSansActivite> letap=etapeService.getAllEtapesSansActivite();
@@ -155,7 +155,7 @@ public ResponseEntity<EtapeDTO> create(@PathVariable Long id,@RequestBody EtapeD
 
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     public ResponseEntity<List<EtapeDTO>> getEtape(@PathVariable Long id) {
         List<EtapeDTO> etapes = etapeService.getByIdEtapes(id);
         return new ResponseEntity<>(etapes, HttpStatus.OK);

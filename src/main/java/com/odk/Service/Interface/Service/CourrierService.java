@@ -398,6 +398,12 @@ public class CourrierService {
      */
     @Transactional(readOnly = true)
     public List<Courrier> listerPourDcire() {
+        return listerPourDcire(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Courrier> listerPourDcire(Long entiteId) {
+        List<Courrier> base;
         Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
         if (dcireOpt.isPresent()) {
             LinkedHashSet<Long> ids = new LinkedHashSet<>();
@@ -410,12 +416,52 @@ public class CourrierService {
             if (ids.isEmpty()) {
                 return List.of();
             }
-            return courrierRepository.findPourVueDcireDivision(ids);
+            base = courrierRepository.findPourVueDcireDivision(ids);
+        } else {
+            base = courrierRepository.findAllOrderByDateReceptionDesc().stream()
+                    .filter(c -> c != null && c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE)
+                    .toList();
         }
-        // Mode "DCIRE = profil" : pas d’entité hub dédiée => on limite strictement aux flux externes.
-        return courrierRepository.findAllOrderByDateReceptionDesc().stream()
-                .filter(c -> c != null && c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE)
+        if (entiteId == null) {
+            return base;
+        }
+        return base.stream()
+                .filter(c -> courrierConcerneEntiteOuDescendants(c, entiteId))
                 .toList();
+    }
+
+    private boolean courrierConcerneEntiteOuDescendants(Courrier c, Long entiteId) {
+        if (c == null || entiteId == null) {
+            return false;
+        }
+        if (c.getEntite() != null && entiteLiee(c.getEntite(), entiteId)) {
+            return true;
+        }
+        if (c.getServiceOdcAffecte() != null && entiteLiee(c.getServiceOdcAffecte(), entiteId)) {
+            return true;
+        }
+        if (c.getStructureOrigine() != null && entiteLiee(c.getStructureOrigine(), entiteId)) {
+            return true;
+        }
+        return c.getDirectionInitial() != null && entiteLiee(c.getDirectionInitial(), entiteId);
+    }
+
+    private boolean entiteLiee(Entite e, Long cibleId) {
+        if (e == null || cibleId == null) {
+            return false;
+        }
+        if (cibleId.equals(e.getId())) {
+            return true;
+        }
+        Entite cur = e.getParent();
+        int guard = 0;
+        while (cur != null && guard++ < 16) {
+            if (cibleId.equals(cur.getId())) {
+                return true;
+            }
+            cur = cur.getParent();
+        }
+        return false;
     }
 
     public List<Courrier> listerPourOdc(Long directionId, String vue) {
@@ -627,6 +673,80 @@ public class CourrierService {
      */
     public List<Courrier> listerCourriersDeleguesResponsableOdk() {
         return courrierRepository.findByDelegueResponsableOdkTrueOrderByDateReceptionDesc();
+    }
+
+    /** Courriers délégués au responsable connecté (par entité ou flag ODK). */
+    public List<Courrier> listerCourriersDeleguesPourResponsableEntite(Utilisateur responsable) {
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        if (ResponsableEntiteSupport.ROLE_ODK.equals(ResponsableEntiteSupport.roleNom(responsable))) {
+            List<Courrier> odk = listerCourriersDeleguesResponsableOdk();
+            List<Long> entiteIds = resoudreEntiteIdsCourrierPourResponsable(responsable);
+            if (entiteIds.isEmpty()) {
+                return odk;
+            }
+            List<Courrier> service = courrierRepository.findDeleguesPourEntites(
+                    entiteIds, StatutCourrier.ARCHIVER);
+            LinkedHashSet<Long> seen = new LinkedHashSet<>();
+            List<Courrier> merged = new ArrayList<>();
+            for (Courrier c : odk) {
+                if (c != null && c.getId() != null && seen.add(c.getId())) {
+                    merged.add(c);
+                }
+            }
+            for (Courrier c : service) {
+                if (c != null && c.getId() != null && seen.add(c.getId())) {
+                    merged.add(c);
+                }
+            }
+            return merged;
+        }
+        List<Long> entiteIds = resoudreEntiteIdsCourrierPourResponsable(responsable);
+        if (entiteIds.isEmpty()) {
+            return List.of();
+        }
+        return courrierRepository.findDeleguesPourEntites(entiteIds, StatutCourrier.ARCHIVER);
+    }
+
+    public List<Courrier> listerCourriersArchivesPourResponsableEntite(Utilisateur responsable) {
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        List<Long> entiteIds = resoudreEntiteIdsCourrierPourResponsable(responsable);
+        if (entiteIds.isEmpty()) {
+            return List.of();
+        }
+        return courrierRepository.findArchivesPourEntites(entiteIds, StatutCourrier.ARCHIVER);
+    }
+
+    @Transactional
+    public void archiverCourrierParResponsableEntite(Long courrierId, Utilisateur responsable) {
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        Courrier courrier = getCourrier(courrierId);
+        List<Entite> entitesRole = listerEntitesPourRole(ResponsableEntiteSupport.roleNom(responsable));
+        if (!ResponsableEntiteSupport.utilisateurPeutArchiverCourrier(courrier, responsable, entitesRole)
+                && !(ResponsableEntiteSupport.ROLE_ODK.equals(ResponsableEntiteSupport.roleNom(responsable))
+                && courrier.isDelegueResponsableOdk())) {
+            throw new CourrierValidationException(
+                    "Vous ne pouvez archiver que les courriers délégués à votre entité.");
+        }
+        archiverCourrier(courrierId, responsable);
+    }
+
+    private List<Long> resoudreEntiteIdsCourrierPourResponsable(Utilisateur responsable) {
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        if (responsable.getEntite() != null && responsable.getEntite().getId() != null) {
+            ids.add(responsable.getEntite().getId());
+        }
+        for (Entite e : listerEntitesPourRole(ResponsableEntiteSupport.roleNom(responsable))) {
+            if (e != null && e.getId() != null) {
+                ids.add(e.getId());
+            }
+        }
+        return List.copyOf(ids);
+    }
+
+    private List<Entite> listerEntitesPourRole(String roleNom) {
+        return entiteRepository.findAll().stream()
+                .filter(e -> ResponsableEntiteSupport.entiteCorrespondAuRole(e, roleNom))
+                .toList();
     }
 
     /** Services Orange Digital Center : Kalanso, FabLab, Multimedia, Orange Fab. */
@@ -905,14 +1025,28 @@ public class CourrierService {
     }
 
     private void notifierEntiteResponsable(Courrier courrier, Entite entite) {
-        if (entite == null || entite.getResponsable() == null || entite.getResponsable().getEmail() == null) {
+        if (entite == null) {
             return;
         }
-        String sujet = "[ODC Courrier] Nouveau courrier : " + courrier.getObjet();
-        String corps = "<p>Un courrier de la DCIRE vous a été affecté (objet : "
-                + courrier.getObjet() + ").</p>";
-        emailService.sendSimpleEmail(entite.getResponsable().getEmail(), sujet,
-                "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+        String roleCible = ResponsableEntiteSupport.rolePourEntiteActivite(entite);
+        String lien = buildFrontendUrl(ResponsableEntiteSupport.cheminDashboardFrontend(roleCible) + "/courriers");
+        String sujet = "[ODC Courrier] Courrier délégué : " + courrier.getObjet();
+        String corps = "<p>Un courrier vous a été délégué par le directeur ODC (objet : "
+                + courrier.getObjet() + ").</p>"
+                + "<p><a href=\"" + lien + "\">Ouvrir vos courriers délégués</a></p>";
+        String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
+        LinkedHashSet<String> emails = new LinkedHashSet<>();
+        if (entite.getResponsable() != null && entite.getResponsable().getEmail() != null) {
+            emails.add(entite.getResponsable().getEmail().trim());
+        }
+        for (Utilisateur u : utilisateurRepository.findByRole_Nom(roleCible)) {
+            if (u.getEmail() != null && !u.getEmail().isBlank()) {
+                emails.add(u.getEmail().trim());
+            }
+        }
+        for (String em : emails) {
+            emailService.sendSimpleEmail(em, sujet, html);
+        }
     }
 
     private void notifierResponsablesOdkNouveauCourrier(Courrier courrier) {

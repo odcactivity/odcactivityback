@@ -37,14 +37,14 @@ public class TypeActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
     public List<TypeActivite> getAllTypes() {
         return typeActiviteService.List(); // Utilise le service pour récupérer les étapes sous forme de DTO
     }
 
     @GetMapping("/by-entite/{entiteId}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     public List<TypeActiviteDTO> getByEntite(@PathVariable Long entiteId) {
         return typeActiviteService.getByEntiteId(entiteId);
     }

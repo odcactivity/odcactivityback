@@ -127,42 +127,85 @@ public class UtilisateurService implements UserDetailsService, CrudService<Utili
 
         return savedUtilisateur;
     }
-    public UtilisateurDTO add2(UtilisateurDTO userdto){
-    if (!UtilService.isValidEmail(userdto.getEmail())) {
+    public UtilisateurDTO add2(UtilisateurDTO userdto) {
+        if (userdto.getEmail() == null || userdto.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "L'email est obligatoire.");
+        }
+        String email = userdto.getEmail().trim().toLowerCase();
+        if (!UtilService.isValidEmail(email)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Votre mail est invalide");
         }
-// Définir un mot de passe par défaut si aucun mot de passe n'est fourni
+        if (utilisateurRepository.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "Cet email est déjà utilisé.");
+        }
+
+        Long roleId = resolveRoleIdFromDto(userdto);
+        Long entiteId = resolveEntiteIdFromDto(userdto);
+
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Le rôle sélectionné n'existe pas (id=" + roleId + "). Créez-le dans Administration > Rôle ou redéployez le backend."));
+        Entite entite = entiteOdcRepository.findById(entiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "L'entité sélectionnée n'existe pas (id=" + entiteId + ")."));
+
         String defaultPassword = "motdepasse123";
-        String rawPassword = userdto.getPassword() != null ? userdto.getPassword() : defaultPassword;
-
-        // Encoder le mot de passe pour le stockage
+        String rawPassword = userdto.getPassword() != null && !userdto.getPassword().isBlank()
+                ? userdto.getPassword()
+                : defaultPassword;
         String encodedPassword = passwordEncoder.encode(rawPassword);
-        userdto.setPassword(encodedPassword);
 
-        // Vérifiez si le rôle est null avant d'accéder à ses propriétés
-        if (userdto.getRole() == null || userdto.getRole().getId() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "Le rôle ne peut pas être null");
-        }
+        Utilisateur user = new Utilisateur();
+        user.setNom(userdto.getNom());
+        user.setPrenom(userdto.getPrenom());
+        user.setEmail(email);
+        user.setGenre(userdto.getGenre());
+        user.setPassword(encodedPassword);
+        user.setPhone(userdto.getPhone());
+        user.setRole(role);
+        user.setEntite(entite);
+        user.setEtat(true);
 
-        // Rechercher le rôle par son nom
-        Role role = roleRepository.findById(userdto.getRole().getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Le rôle " + userdto.getRole().getId() + " n'existe pas"));
-//                userdto.setRole(role);
-          Utilisateur user=new Utilisateur();
-          user.setNom(userdto.getNom());
-          user.setPrenom(userdto.getPrenom());
-          user.setEmail(userdto.getEmail());
-          user.setGenre(userdto.getGenre());
-          user.setPassword(encodedPassword);
-          user.setPhone(userdto.getPhone());
-          user.setEntite(userdto.getEntite()); 
-          user.setEtat(true);
-          roleRepository.findById(userdto.getRole().getId()).ifPresent(user::setRole);
-          entiteOdcRepository.findById(userdto.getEntite().getId()).ifPresent(user::setEntite);
-              Utilisateur usersaved=utilisateurRepository.save(user);
-              UtilisateurDTO dtosaved=new UtilisateurDTO(usersaved.getId(),  usersaved.getNom(), usersaved.getPrenom(), usersaved.getEmail(), usersaved.getGenre(),usersaved.getPassword(),"", usersaved.getPhone(), usersaved.getRole(), usersaved.getEntite(),true);
-         return dtosaved;      
+        Utilisateur usersaved = utilisateurRepository.save(user);
+        return new UtilisateurDTO(
+                usersaved.getId(),
+                usersaved.getNom(),
+                usersaved.getPrenom(),
+                usersaved.getEmail(),
+                usersaved.getGenre(),
+                usersaved.getPassword(),
+                "",
+                usersaved.getPhone(),
+                usersaved.getRole(),
+                usersaved.getEntite(),
+                true);
+    }
+
+    private Long resolveRoleIdFromDto(UtilisateurDTO dto) {
+        if (dto.getRole() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le rôle est obligatoire.");
         }
+        if (dto.getRole().getId() != null) {
+            return dto.getRole().getId();
+        }
+        if (dto.getRole().getNom() != null && !dto.getRole().getNom().isBlank()) {
+            return roleRepository.findByNom(dto.getRole().getNom().trim())
+                    .map(Role::getId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Le rôle « " + dto.getRole().getNom() + " » n'existe pas en base."));
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Identifiant de rôle manquant.");
+    }
+
+    private Long resolveEntiteIdFromDto(UtilisateurDTO dto) {
+        if (dto.getEntite() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "L'entité est obligatoire.");
+        }
+        if (dto.getEntite().getId() != null) {
+            return dto.getEntite().getId();
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Identifiant d'entité manquant.");
+    }
     
    
     

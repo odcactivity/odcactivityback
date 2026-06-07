@@ -88,6 +88,20 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     List<Courrier> findByDelegueResponsableOdkTrueOrderByDateReceptionDesc();
 
+    @Query("SELECT c FROM Courrier c WHERE c.statut <> :arch AND ("
+            + "c.entite.id IN :entiteIds OR c.serviceOdcAffecte.id IN :entiteIds"
+            + ") ORDER BY c.dateReception DESC")
+    List<Courrier> findDeleguesPourEntites(
+            @Param("entiteIds") Collection<Long> entiteIds,
+            @Param("arch") StatutCourrier arch);
+
+    @Query("SELECT c FROM Courrier c WHERE c.statut = :arch AND ("
+            + "c.entite.id IN :entiteIds OR c.serviceOdcAffecte.id IN :entiteIds"
+            + ") ORDER BY c.dateArchivage DESC, c.dateReception DESC")
+    List<Courrier> findArchivesPourEntites(
+            @Param("entiteIds") Collection<Long> entiteIds,
+            @Param("arch") StatutCourrier arch);
+
     List<Courrier> findByStructureOrigineIdOrderByDateReceptionDesc(Long structureOrigineId);
 
     @Query("SELECT DISTINCT c FROM Courrier c WHERE "

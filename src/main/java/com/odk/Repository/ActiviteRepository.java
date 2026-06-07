@@ -94,6 +94,20 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
 
     List<Activite> findByStatut(Statut statut);
 
+    @Query("SELECT a FROM Activite a WHERE a.statut = :statut AND a.entite.id IN :entiteIds ORDER BY a.dateDebut DESC")
+    List<Activite> findByStatutAndEntiteIdIn(
+            @Param("statut") Statut statut,
+            @Param("entiteIds") Collection<Long> entiteIds);
+
+    @Query("SELECT a FROM Activite a WHERE (a.transmiseDirecteurOdcLe IS NOT NULL "
+            + "OR a.directeurOdcDecision IS NOT NULL "
+            + "OR a.statut = :statutEnValidationDirecteur) "
+            + "AND a.entite.id IN :entiteIds "
+            + "ORDER BY COALESCE(a.transmiseDirecteurOdcLe, a.directeurOdcTraiteLe, a.dateDebut) DESC")
+    List<Activite> findHistoriqueTransmissionsDirecteurOdcPourEntites(
+            @Param("statutEnValidationDirecteur") Statut statutEnValidationDirecteur,
+            @Param("entiteIds") Collection<Long> entiteIds);
+
     List<Activite> findByTransmiseDirecteurOdcLeIsNotNullOrderByTransmiseDirecteurOdcLeDesc();
 
     @Query("SELECT a FROM Activite a WHERE a.transmiseDirecteurOdcLe IS NOT NULL "

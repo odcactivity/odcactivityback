@@ -26,14 +26,14 @@ public class SalleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
     public List<Salle> lister() {
         return salleService.List();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')")
     public ResponseEntity<Salle> getSalleParId(@PathVariable Long id) {
         return salleService.findById(id)
                 .map(ResponseEntity::ok)

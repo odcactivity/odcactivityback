@@ -289,10 +289,15 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.listerPourOdc(directionId, vue));
     }
 
+    static final String ROLES_RESPONSABLE_ENTITE =
+            "hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') "
+                    + "or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')";
+
     @GetMapping("/dcire")
     @PreAuthorize("hasRole('DIRECTEUR')")
-    public ResponseEntity<List<Courrier>> listerPourDcire() {
-        return ResponseEntity.ok(courrierService.listerPourDcire());
+    public ResponseEntity<List<Courrier>> listerPourDcire(
+            @RequestParam(required = false) Long entiteId) {
+        return ResponseEntity.ok(courrierService.listerPourDcire(entiteId));
     }
 
     @GetMapping("/dcire/cibles-division")
@@ -329,10 +334,27 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.listerCourriersEnAttenteResponsableOdk());
     }
 
-    @GetMapping("/responsable-odk/courriers-delegues")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
-    public ResponseEntity<List<Courrier>> courriersDeleguesResponsableOdk() {
-        return ResponseEntity.ok(courrierService.listerCourriersDeleguesResponsableOdk());
+    @GetMapping({"/responsable-odk/courriers-delegues", "/responsable-entite/courriers-delegues"})
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public ResponseEntity<List<Courrier>> courriersDeleguesResponsableEntite(
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.listerCourriersDeleguesPourResponsableEntite(utilisateur));
+    }
+
+    @GetMapping("/responsable-entite/courriers-archives")
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public ResponseEntity<List<Courrier>> courriersArchivesResponsableEntite(
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.listerCourriersArchivesPourResponsableEntite(utilisateur));
+    }
+
+    @PatchMapping("/responsable-entite/{id}/archiver")
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public ResponseEntity<Void> archiverCourrierResponsableEntite(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        courrierService.archiverCourrierParResponsableEntite(id, utilisateur);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/responsable-odk/services-odc")

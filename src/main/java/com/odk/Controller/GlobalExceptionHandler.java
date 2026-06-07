@@ -17,6 +17,14 @@ public class GlobalExceptionHandler {
                 .body(new ResponseMessage(ex.getReason()));
     }
 
+    @ExceptionHandler(NullPointerException.class)
+    public ResponseEntity<?> handleNullPointer(NullPointerException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ResponseMessage(
+                        "Données incomplètes (rôle ou entité manquant). Vérifiez le formulaire utilisateur."));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
         return ResponseEntity

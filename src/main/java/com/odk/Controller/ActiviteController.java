@@ -29,6 +29,10 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "http://localhost:4200")
 public class ActiviteController {
 
+    static final String ROLES_RESPONSABLE_ENTITE =
+            "hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') "
+                    + "or hasRole('RESPONSABLE_OFAB') or hasRole('RESPONSABLE_MULTIMEDIA')";
+
     private final ActiviteRepository activiteRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final ActiviteService activiteService;
@@ -52,7 +56,9 @@ public class ActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
+            + "or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') "
+            + "or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
     public List<ActiviteDTO> listerActivite() {
         List<Activite> all = new ArrayList<>(activiteService.List());
@@ -74,7 +80,9 @@ public class ActiviteController {
     }
 
     @GetMapping("/calendrier")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
+            + "or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') "
+            + "or hasRole('RESPONSABLE_MULTIMEDIA')")
     public List<ActiviteDTO> listerPourCalendrier() {
         return activiteMapper.listeActivite(activiteService.listerPourCalendrier());
     }
@@ -141,21 +149,21 @@ public class ActiviteController {
         }
     }
 
-    @GetMapping("/responsable-odk/en-attente")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
-    public List<ActiviteDTO> listerEnAttenteResponsableOdk() {
+    @GetMapping({"/responsable-odk/en-attente", "/responsable-entite/en-attente"})
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public List<ActiviteDTO> listerEnAttenteResponsableEntite() {
         return activiteMapper.listeActivite(activiteService.listerEnAttenteResponsableOdk());
     }
 
-    @GetMapping("/responsable-odk/transmises-directeur")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
-    public List<ActiviteDTO> listerTransmisesDirecteurParResponsableOdk() {
+    @GetMapping({"/responsable-odk/transmises-directeur", "/responsable-entite/transmises-directeur"})
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public List<ActiviteDTO> listerTransmisesDirecteurParResponsableEntite() {
         return activiteMapper.listeActivite(activiteService.listerTransmisesDirecteurOdcParResponsable());
     }
 
-    @DeleteMapping("/responsable-odk/{id}")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
-    public ResponseEntity<Map<String, String>> supprimerParResponsableOdk(@PathVariable Long id) {
+    @DeleteMapping({"/responsable-odk/{id}", "/responsable-entite/{id}"})
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public ResponseEntity<Map<String, String>> supprimerParResponsableEntite(@PathVariable Long id) {
         activiteService.supprimerParResponsableOdk(id);
         Map<String, String> response = new HashMap<>();
         response.put("message", "Activité supprimée.");
@@ -163,7 +171,7 @@ public class ActiviteController {
     }
 
     @PostMapping("/{id}/transmettre-directeur-odc")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
     public ActiviteDTO transmettreDirecteurOdc(
             @PathVariable Long id,
             @RequestParam(required = false) String note) {
@@ -171,7 +179,7 @@ public class ActiviteController {
     }
 
     @PostMapping("/{id}/retour-personnel-responsable")
-    @PreAuthorize("hasRole('RESPONSABLE_ODK')")
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
     public ActiviteDTO retourPersonnelResponsable(
             @PathVariable Long id,
             @RequestParam String note) {

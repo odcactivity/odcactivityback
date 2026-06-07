@@ -176,6 +176,10 @@ public class DataInitializer implements CommandLineRunner {
             });
         }
 
+        assurerRoleResponsableEntite("RESPONSABLE_FABLAB");
+        assurerRoleResponsableEntite("RESPONSABLE_OFAB");
+        assurerRoleResponsableEntite("RESPONSABLE_MULTIMEDIA");
+
         creerDirecteurStructure(
                 "DIRECTEUR_FONDATION", "directeurFondation@gmail.com", "Fondation", "FONDATION");
         creerDirecteurStructure(
@@ -188,6 +192,16 @@ public class DataInitializer implements CommandLineRunner {
      * Associe une direction existante si le nom matche ; sinon crée quand même le compte (entité null)
      * pour permettre la connexion après reset BDD — rattachement entité possible depuis l’admin.
      */
+    private void assurerRoleResponsableEntite(String roleNom) {
+        roleRepository.findByNom(roleNom).orElseGet(() -> {
+            Role r = new Role();
+            r.setNom(roleNom);
+            Role saved = roleRepository.save(r);
+            System.out.println("Rôle " + roleNom + " créé.");
+            return saved;
+        });
+    }
+
     private void creerDirecteurStructure(
             String roleNom, String email, String prenom, String motClefDirection) {
         Role role = roleRepository

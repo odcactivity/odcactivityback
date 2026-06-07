@@ -1,7 +1,9 @@
 package com.odk.Controller;
 
+import com.odk.Entity.Role;
 import com.odk.Entity.Utilisateur;
 import com.odk.Repository.UtilisateurRepository;
+import com.odk.Service.Interface.Service.RoleService;
 import com.odk.Service.Interface.Service.UtilisateurService;
 import com.odk.dto.UtilisateurDTO;
 import lombok.AllArgsConstructor;
@@ -24,14 +26,22 @@ public class UtilisateurController {
 
     private final UtilisateurRepository utilisateurRepository;
     private UtilisateurService utilisateurService;
+    private RoleService roleService;
     private static final Logger logger = LoggerFactory.getLogger(UtilisateurController.class);
 
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPERADMIN')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     public UtilisateurDTO ajouter(@RequestBody UtilisateurDTO utilisateur){
         return utilisateurService.add2(utilisateur);
+    }
+
+    @GetMapping("/roles-formulaire")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.OK)
+    public List<Role> rolesFormulaire() {
+        return roleService.List();
     }
 
     @GetMapping

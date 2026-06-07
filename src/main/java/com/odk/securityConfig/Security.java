@@ -60,6 +60,8 @@ public class Security {
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/activitevalidation/**").permitAll()  // Autoriser les routes d'authentification
                         .requestMatchers("/utilisateur/modifierMotDePasse").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/role").hasAnyRole("SUPERADMIN", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/role/*").hasAnyRole("SUPERADMIN", "ADMIN")
                         .requestMatchers("/role/**").hasRole("SUPERADMIN")
                         .requestMatchers("/entites/**").permitAll()
                         .requestMatchers("/reporting/**", "/reportinghebdo/**").permitAll()
@@ -84,9 +86,6 @@ public class Security {
                         //Acces Endpoints Fichiers&Tailles ...
                         .requestMatchers(HttpMethod.PUT, "/api/courriers/**").hasAnyRole("PERSONNEL","SUPERADMIN","ADMIN","DIRECTEUR","DIRECTEUR_ODC")
                         .requestMatchers(HttpMethod.PUT, "/api/historique/**").hasAnyRole("PERSONNEL","SUPERADMIN","DIRECTEUR")
-                        .requestMatchers("/utilisateur/modifierMotDePasse").authenticated()
-                        .requestMatchers("/role/**").hasRole("SUPERADMIN")
-
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

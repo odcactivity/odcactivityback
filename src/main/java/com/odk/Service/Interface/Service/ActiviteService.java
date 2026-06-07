@@ -1,9 +1,12 @@
 package com.odk.Service.Interface.Service;
 
 import com.odk.Entity.Activite;
+import com.odk.Entity.Entite;
 import com.odk.Entity.Etape;
 import com.odk.Entity.Salle;
 import com.odk.Entity.Utilisateur;
+import com.odk.Enum.TypeEntite;
+import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import com.odk.Repository.ActiviteRepository;
@@ -20,7 +23,9 @@ import jakarta.transaction.Transactional;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Date;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +57,7 @@ public class ActiviteService implements CrudService<Activite, Long> {
     private String directeurValidationActivitesPath;
 
     private final ActiviteRepository activiteRepository;
+    private final EntiteOdcRepository entiteOdcRepository;
     private final PersonnelService personnelService;
     private final EmailService emailService;
     private final UtilisateurService utilisateurService;
@@ -110,7 +116,7 @@ public class ActiviteService implements CrudService<Activite, Long> {
             entity.setStatut(Statut.En_Validation_Responsable_ODK);
             Activite activiteCree = activiteRepository.save(entity);
             try {
-                envoiMailResponsableOdkPourActivite(activiteCree);
+                envoiMailResponsableEntitePourActivite(activiteCree);
             } catch (RuntimeException mailEx) {
                 log.warn("Notification e-mail directeur ODC ignorée (activité id={}) : {}",
                         activiteCree.getId(), mailEx.getMessage());
@@ -199,20 +205,32 @@ public void envoiMail(Activite activiteCree){
 }
 
     public void envoiMailResponsableOdkPourActivite(Activite activiteCree) {
-        List<Utilisateur> responsables = utilisateurRepository.findByRole_Nom("RESPONSABLE_ODK");
+        envoiMailResponsableEntitePourActivite(activiteCree);
+    }
+
+    /** Notifie le responsable d'entité concerné (FabLab, OFAB, Multimedia, Kalanso/ODK). */
+    public void envoiMailResponsableEntitePourActivite(Activite activiteCree) {
+        String roleCible = ResponsableEntiteSupport.rolePourEntiteActivite(activiteCree.getEntite());
+        List<Utilisateur> responsables = utilisateurRepository.findByRole_Nom(roleCible);
         if (responsables == null || responsables.isEmpty()) {
-            envoiMailDirecteurOdcPourActivite(activiteCree);
-            return;
+            if (!ResponsableEntiteSupport.ROLE_ODK.equals(roleCible)) {
+                responsables = utilisateurRepository.findByRole_Nom(ResponsableEntiteSupport.ROLE_ODK);
+            }
+            if (responsables == null || responsables.isEmpty()) {
+                envoiMailDirecteurOdcPourActivite(activiteCree);
+                return;
+            }
         }
         String createur = activiteCree.getCreatedBy() != null
                 ? activiteCree.getCreatedBy().getPrenom() + " " + activiteCree.getCreatedBy().getNom()
                 : "un personnel";
-        String lien = buildFrontendUrl("/responsable-odk/dashboard");
+        String lien = buildFrontendUrl(ResponsableEntiteSupport.cheminDashboardFrontend(roleCible));
+        String libelle = ResponsableEntiteSupport.libelleRole(roleCible);
         String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(createur)
                 + "</strong> a créé l'activité <strong>" + escapeHtml(activiteCree.getNom())
                 + "</strong>. Merci de vérifier la salle et la logistique avant transmission au directeur ODC.</p>"
-                + "<p><a href=\"" + lien + "\">Tableau de bord responsable ODK</a></p>";
-        String sujet = "[ODC Activité] À traiter (responsable ODK) : " + activiteCree.getNom();
+                + "<p><a href=\"" + lien + "\">Tableau de bord " + escapeHtml(libelle) + "</a></p>";
+        String sujet = "[ODC Activité] À traiter (" + libelle + ") : " + activiteCree.getNom();
         for (Utilisateur r : responsables) {
             if (r.getEmail() != null && !r.getEmail().isBlank()) {
                 emailService.sendSimpleEmail(r.getEmail(), sujet,
@@ -221,13 +239,62 @@ public void envoiMail(Activite activiteCree){
         }
     }
 
+    public List<Long> resoudreEntiteIdsPourResponsable(Utilisateur responsable) {
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        if (responsable.getEntite() != null && responsable.getEntite().getId() != null) {
+            ids.add(responsable.getEntite().getId());
+        }
+        String role = ResponsableEntiteSupport.roleNom(responsable);
+        for (Entite e : entiteOdcRepository.findAll()) {
+            if (e == null || e.getId() == null) {
+                continue;
+            }
+            if (ResponsableEntiteSupport.entiteCorrespondAuRole(e, role)) {
+                ids.add(e.getId());
+            }
+        }
+        return List.copyOf(ids);
+    }
+
+    private void assertActiviteVisiblePourResponsable(Activite a, Utilisateur responsable) {
+        List<Long> entiteIds = resoudreEntiteIdsPourResponsable(responsable);
+        if (a.getEntite() == null || a.getEntite().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Cette activité n'est pas rattachée à une entité.");
+        }
+        if (!entiteIds.contains(a.getEntite().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Cette activité ne concerne pas votre entité.");
+        }
+    }
+
+    public List<Activite> listerEnAttentePourResponsableEntite(Utilisateur responsable) {
+        List<Long> entiteIds = resoudreEntiteIdsPourResponsable(responsable);
+        if (entiteIds.isEmpty()) {
+            return List.of();
+        }
+        return activiteRepository.findByStatutAndEntiteIdIn(Statut.En_Validation_Responsable_ODK, entiteIds);
+    }
+
+    public List<Activite> listerTransmisesDirecteurPourResponsableEntite(Utilisateur responsable) {
+        List<Long> entiteIds = resoudreEntiteIdsPourResponsable(responsable);
+        if (entiteIds.isEmpty()) {
+            return List.of();
+        }
+        return activiteRepository.findHistoriqueTransmissionsDirecteurOdcPourEntites(
+                Statut.En_Validation_Directeur_ODC, entiteIds);
+    }
+
     @Transactional
-    public Activite transfererAuDirecteurOdcParResponsable(Long activiteId, String note) {
+    public Activite transfererAuDirecteurOdcParResponsable(Long activiteId, String note, Utilisateur responsable) {
         Activite a = activiteRepository.findById(activiteId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        assertActiviteVisiblePourResponsable(a, responsable);
         if (a.getStatut() != Statut.En_Validation_Responsable_ODK) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Cette activité n'est pas en attente chez le responsable ODK.");
+                    "Cette activité n'est pas en attente chez le responsable.");
         }
         if (note != null && !note.isBlank()) {
             a.setNoteResponsableOdk(note.trim());
@@ -241,12 +308,22 @@ public void envoiMail(Activite activiteCree){
     }
 
     @Transactional
-    public Activite retournerAuPersonnelParResponsable(Long activiteId, String note) {
+    public Activite transfererAuDirecteurOdcParResponsable(Long activiteId, String note) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Utilisateur introuvable."));
+        return transfererAuDirecteurOdcParResponsable(activiteId, note, u);
+    }
+
+    @Transactional
+    public Activite retournerAuPersonnelParResponsable(Long activiteId, String note, Utilisateur responsable) {
         Activite a = activiteRepository.findById(activiteId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        assertActiviteVisiblePourResponsable(a, responsable);
         if (a.getStatut() != Statut.En_Validation_Responsable_ODK) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Cette activité n'est pas en attente chez le responsable ODK.");
+                    "Cette activité n'est pas en attente chez le responsable.");
         }
         a.setNoteResponsableOdk(note != null ? note.trim() : "");
         a.setDirecteurOdcDecision(null);
@@ -264,23 +341,43 @@ public void envoiMail(Activite activiteCree){
     }
 
     public List<Activite> listerEnAttenteResponsableOdk() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email).orElse(null);
+        if (u != null && ResponsableEntiteSupport.estUtilisateurResponsableEntite(u)) {
+            return listerEnAttentePourResponsableEntite(u);
+        }
         return activiteRepository.findByStatut(Statut.En_Validation_Responsable_ODK);
     }
 
     /** Historique : transmissions au directeur ODC, conservées après validation ou refus. */
     public List<Activite> listerTransmisesDirecteurOdcParResponsable() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email).orElse(null);
+        if (u != null && ResponsableEntiteSupport.estUtilisateurResponsableEntite(u)) {
+            return listerTransmisesDirecteurPourResponsableEntite(u);
+        }
         return activiteRepository.findHistoriqueTransmissionsDirecteurOdc(Statut.En_Validation_Directeur_ODC);
     }
 
     @Transactional
-    public void supprimerParResponsableOdk(Long activiteId) {
+    public void supprimerParResponsableEntite(Long activiteId, Utilisateur responsable) {
         Activite a = activiteRepository.findById(activiteId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+        ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
+        assertActiviteVisiblePourResponsable(a, responsable);
         if (a.getStatut() != Statut.En_Validation_Directeur_ODC) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Seules les activités transmises au directeur ODC peuvent être supprimées par le responsable ODK.");
+                    "Seules les activités transmises au directeur ODC peuvent être supprimées.");
         }
         activiteRepository.delete(a);
+    }
+
+    @Transactional
+    public void supprimerParResponsableOdk(Long activiteId) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Utilisateur introuvable."));
+        supprimerParResponsableEntite(activiteId, u);
     }
 
     /** Après correction personnel suite à un retour responsable ODK → renvoi en validation responsable. */
@@ -290,9 +387,9 @@ public void envoiMail(Activite activiteCree){
         if (noteCorrection && statutCorrigeable) {
             a.setStatut(Statut.En_Validation_Responsable_ODK);
             try {
-                envoiMailResponsableOdkPourActivite(a);
+                envoiMailResponsableEntitePourActivite(a);
             } catch (RuntimeException mailEx) {
-                log.warn("Notification responsable ODK ignorée (activité id={}) : {}", a.getId(), mailEx.getMessage());
+                log.warn("Notification responsable entité ignorée (activité id={}) : {}", a.getId(), mailEx.getMessage());
             }
         }
     }
@@ -339,8 +436,16 @@ public void envoiMail(Activite activiteCree){
         a.setSuggestionDirecteurOdc(suggestion != null ? suggestion.trim() : "");
         a.setStatut(Statut.En_Validation_Responsable_ODK);
         Activite saved = activiteRepository.save(a);
-        envoiMailResponsableOdkPourActivite(saved);
+        envoiMailResponsableEntitePourActivite(saved);
         return saved;
+    }
+
+    @Transactional
+    public Activite retournerAuPersonnelParResponsable(Long activiteId, String note) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur u = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Utilisateur introuvable."));
+        return retournerAuPersonnelParResponsable(activiteId, note, u);
     }
 
     public void envoiMailDirecteurOdcPourActivite(Activite activiteCree) {
