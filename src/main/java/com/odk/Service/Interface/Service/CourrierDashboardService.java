@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.text.Normalizer;
@@ -71,7 +72,7 @@ public class CourrierDashboardService {
         DashboardScope scope = resolveScope(structureId, principal);
         List<Courrier> list = loadCourriersPourScope(scope, principal);
         Long effectiveId = resolveEffectiveStructureId(structureId, principal);
-        applyCourrierDashboardStructureFilter(list, effectiveId, principal);
+        applyCourrierDashboardStructureFilterDcire(list, effectiveId, structureId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
         EnumMap<Cat, Long> m = new EnumMap<>(Cat.class);
         for (Cat c : Cat.values()) {
@@ -108,7 +109,7 @@ public class CourrierDashboardService {
         DashboardScope scope = resolveScope(structureId, principal);
         List<Courrier> list = loadCourriersPourScope(scope, principal);
         Long effectiveId = resolveEffectiveStructureId(structureId, principal);
-        applyCourrierDashboardStructureFilter(list, effectiveId, principal);
+        applyCourrierDashboardStructureFilterDcire(list, effectiveId, structureId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
 
         LocalDate today = LocalDate.now(TZ);
@@ -194,22 +195,27 @@ public class CourrierDashboardService {
         if (scope == DashboardScope.STRUCTURE) {
             return courrierService.listerToutPourMaStructure(principal);
         }
-        List<Entite> odcDirs = courrierService.listerDirectionsOdcPourBrouillon();
-        if (odcDirs == null || odcDirs.isEmpty()) {
-            return List.of();
-        }
-        Map<Long, Courrier> byId = new HashMap<>();
-        for (Entite d : odcDirs) {
-            if (d == null || d.getId() == null) {
-                continue;
+        if (scope == DashboardScope.ODC) {
+            List<Entite> odcDirs = courrierService.listerDirectionsOdcPourBrouillon();
+            if (odcDirs == null || odcDirs.isEmpty()) {
+                return List.of();
             }
-            for (Courrier c : courrierService.listerPourOdc(d.getId(), "TOUS")) {
-                if (c != null && c.getId() != null) {
-                    byId.put(c.getId(), c);
+            Map<Long, Courrier> byId = new HashMap<>();
+            List<Courrier> all = courrierRepository.findAll();
+            for (Entite d : odcDirs) {
+                if (d == null || d.getId() == null) continue;
+                for (Courrier c : all) {
+                    if (c != null && c.getId() != null && (Objects.equals(c.getEntite() != null ? c.getEntite().getId() : null, d.getId())
+                            || (c.getStructureOrigine() != null && Objects.equals(c.getStructureOrigine().getId(), d.getId()))
+                            || (c.getDirectionInitial() != null && Objects.equals(c.getDirectionInitial().getId(), d.getId()))
+                            || (c.getEntite() != null && c.getEntite().getParent() != null && Objects.equals(c.getEntite().getParent().getId(), d.getId())))) {
+                        byId.put(c.getId(), c);
+                    }
                 }
             }
+            return new ArrayList<>(byId.values());
         }
-        return new ArrayList<>(byId.values());
+        return List.of();
     }
 
     private Map<Long, List<HistoriqueCourrier>> loadHistoriques(List<Courrier> courriers) {
@@ -275,7 +281,8 @@ public class CourrierDashboardService {
         // La source de vérité doit rester le statut courant du courrier
         // (l'historique peut être incomplet sur certains anciens enregistrements).
         if (statutCourant == StatutCourrier.ARCHIVER) {
-            return Optional.empty();
+            // Même si le courrier est archivé, il a été reçu : le comptabiliser comme 'reçu'
+            return Optional.of(Cat.recu);
         }
         if (scope == DashboardScope.ODC) {
             Optional<Cat> fluxOdc = categorieFluxDcireVersOdcPourOdc(c, statutCourant, principal);
@@ -349,7 +356,9 @@ public class CourrierDashboardService {
     }
 
     private List<Courrier> loadCourriers() {
-        return new ArrayList<>(courrierRepository.findAllNonArchivedForDashboard(StatutCourrier.ARCHIVER));
+        // Include all courriers (archived and non‑archived). The category logic
+        // will treat ARCHIVER as 'reçu' so the graph keeps them.
+        return new ArrayList<>(courrierRepository.findAll());
     }
 
     /**
@@ -391,13 +400,21 @@ public class CourrierDashboardService {
         return false;
     }
 
-    private void applyCourrierDashboardStructureFilter(List<Courrier> list, Long effectiveStructureId, Utilisateur principal) {
+    /**
+     * Filtre les courriers pour DCIRE :
+     *  - {@code dcireId} : identifiant de la direction hub DCIRE (périmètre DCIRE).
+     *  - {@code requestedStructureId} : filtre de sous-structure choisi par l'utilisateur
+     *    (null = afficher tout le périmètre DCIRE).
+     */
+    private void applyCourrierDashboardStructureFilterDcire(List<Courrier> list, Long dcireId,
+            Long requestedStructureId, Utilisateur principal) {
         if (isDcireHubDirectorRole(principal)) {
-            list.removeIf(c -> !matchesDcireHubDashboard(c, effectiveStructureId));
+            list.removeIf(c -> !matchesDcireHubDashboardWithFilter(c, dcireId, requestedStructureId));
         } else {
-            list.removeIf(c -> !matchesStructureFilter(c, effectiveStructureId));
+            list.removeIf(c -> !matchesStructureFilter(c, dcireId));
         }
     }
+
 
     /**
      * Directeur historique « DCIRE » (rôle {@code DIRECTEUR}) ou rôle explicite {@code DCIRE}.
@@ -417,22 +434,39 @@ public class CourrierDashboardService {
      * en base et fausserait les totaux (même chiffres que le dash admin ODC).
      */
     private boolean matchesDcireHubDashboard(Courrier c, Long dcireId) {
+        return matchesDcireHubDashboardWithFilter(c, dcireId, null);
+    }
+
+    /**
+     * Vérifie qu'un courrier appartient au périmètre DCIRE ET, si un filtre de sous-structure
+     * ({@code requestedStructureId}) est précisé, qu'il y est rattaché.
+     * Si {@code requestedStructureId == dcireId} ou si {@code requestedStructureId == null},
+     * on affiche tout le périmètre DCIRE sans filtre supplémentaire.
+     */
+    private boolean matchesDcireHubDashboardWithFilter(Courrier c, Long dcireId, Long requestedStructureId) {
         if (dcireId == null) {
             return false;
         }
+        // Appartient au périmètre DCIRE ?
+        boolean dansDcire = false;
         if (c.getEntite() != null && dcireId.equals(c.getEntite().getId())) {
-            return true;
+            dansDcire = true;
+        } else if (entiteServiceDirectementSousDirection(c.getEntite(), dcireId)) {
+            dansDcire = true;
+        } else if (c.getStructureOrigine() != null && dcireId.equals(c.getStructureOrigine().getId())) {
+            dansDcire = true;
+        } else if (c.getDirectionInitial() != null && dcireId.equals(c.getDirectionInitial().getId())) {
+            dansDcire = true;
         }
-        if (entiteServiceDirectementSousDirection(c.getEntite(), dcireId)) {
-            return true;
+        if (!dansDcire) {
+            return false;
         }
-        if (c.getStructureOrigine() != null && dcireId.equals(c.getStructureOrigine().getId())) {
-            return true;
+        // Filtre de sous-structure : si l'utilisateur a sélectionné une entité spécifique
+        // différente de la direction DCIRE principale, on filtre en plus.
+        if (requestedStructureId != null && !requestedStructureId.equals(dcireId)) {
+            return matchesStructureFilter(c, requestedStructureId);
         }
-        if (c.getDirectionInitial() != null && dcireId.equals(c.getDirectionInitial().getId())) {
-            return true;
-        }
-        return false;
+        return true;
     }
 
     private boolean entiteServiceDirectementSousDirection(Entite e, Long directionId) {
@@ -472,6 +506,9 @@ public class CourrierDashboardService {
          * faussait les totaux (même affichage que l’admin sur « Toutes »).
          */
         if ("DIRECTEUR".equals(role) || "DCIRE".equals(role)) {
+            // On retourne toujours l'ID de la direction DCIRE comme périmètre de base.
+            // Le filtre de sous-structure demandé par l'utilisateur est géré séparément
+            // dans applyCourrierDashboardStructureFilterDcire().
             Long dcireId = resolveDcireDirectionIdForDashboard();
             if (dcireId != null) {
                 return dcireId;

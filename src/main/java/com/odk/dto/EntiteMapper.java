@@ -45,8 +45,8 @@ public class EntiteMapper {
                 sousEntiteIds,
                 responsableId,
                 typeActiviteIds,
-                entite.getType() 
-                
+                entite.getType(),
+                entite.getIsOdc() != null ? entite.getIsOdc() : false
         );
     }
 
@@ -60,6 +60,7 @@ public class EntiteMapper {
         entite.setLogo(dto.getLogo());
         entite.setDescription(dto.getDescription());
         entite.setType(dto.getType());
+        entite.setIsOdc(dto.getIsOdc());
 
         // ===== Parent =====
         if (dto.getParentId() != null) {

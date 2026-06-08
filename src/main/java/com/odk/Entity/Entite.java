@@ -19,14 +19,21 @@ public class Entite {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private String nom;
     private String logo;
     private String description;
 
-    //Type: DIRECTION ou SERVICE
+    // Type: DIRECTION ou SERVICE
     @Enumerated(EnumType.STRING)
     @JsonIgnore
     private TypeEntite type;
+
+    /**
+     * Flag indicating whether this entity belongs to the ODC scope (set by admin).
+     */
+    @Column(name = "is_odc", nullable = false, columnDefinition = "boolean default false")
+    private Boolean isOdc = false;
 
     @OneToMany(mappedBy = "entite")
     @JsonIgnore
@@ -37,15 +44,14 @@ public class Entite {
     @JsonIgnore
     private Utilisateur responsable;
 
-    /*******Association réflexive pour comprendre le role de chaque service crée*****/
-    //Entite parent (Direction ou service parent)
-    @JsonIgnoreProperties({"sousEntite","parent"})
+    // Reflexive association to represent parent direction or service
+    @JsonIgnoreProperties({"sousEntite", "parent"})
     @ManyToOne
     @JoinColumn(name = "parent_id")
     private Entite parent;
 
-    //Sous-entités (Services ou unités)
-    @JsonIgnoreProperties({"parent","sousEntite"})
+    // Sub‑entities (services or units) under this entity
+    @JsonIgnoreProperties({"parent", "sousEntite"})
     @OneToMany(mappedBy = "parent")
     private List<Entite> sousEntite;
 
@@ -57,7 +63,7 @@ public class Entite {
     )
     private List<TypeActivite> typeActivitesIds;
 
-    // Ajout d'un constructeur prenant un ID pour la désérialisation
+    // Constructor for deserialization by ID only
     public Entite(Long id) {
         this.id = id;
     }

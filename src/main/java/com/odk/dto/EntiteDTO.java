@@ -26,6 +26,7 @@ public class EntiteDTO {
     @JsonProperty("typeActiviteIds")
     private List<Long> typeActivitesIds;      // uniquement les IDs des types d'activités
     private TypeEntite type; //Recupere DIRECTION||SERVICE
+    private Boolean isOdc = false; // Marqueur entité ODC (ajouté par l'admin)
 
     
     // Constructeurs partiels pour la création
@@ -36,6 +37,7 @@ public class EntiteDTO {
         this.responsable = responsable;
         this.typeActivitesIds = typeActivitesIds;
         this.type = type;
+        this.isOdc = false;
     }
     
     // Constructeur avec parent pour les services
@@ -47,5 +49,6 @@ public class EntiteDTO {
         this.responsable = responsable;
         this.typeActivitesIds = typeActivitesIds;
         this.type = type;
+        this.isOdc = false;
     }
 }
