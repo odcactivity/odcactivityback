@@ -90,10 +90,8 @@ public class ReponseCourrierService {
         reponse.setObjet(dto.getObjet());
         reponse.setMessage(dto.getMessage());
         
-        // Si c'est le flux ODC, la réponse n'est validée d'office QUE si c'est le Directeur ODC qui la soumet.
-        // Si c'est un responsable d'entité, elle doit d'abord être validée par le Directeur ODC.
-        boolean reponseFinaleOdc = fluxOdcDirecteur && estDirecteurOdc;
-        reponse.setValideeDirecteurOdc(reponseFinaleOdc || !fluxOdcDirecteur);
+        // Si c'est le flux ODC, la réponse du responsable ou du directeur est validée d'office.
+        reponse.setValideeDirecteurOdc(true);
 
         // Gestion des fichiers joints
         if (!fichiersJoints.isEmpty()) {
@@ -111,15 +109,8 @@ public class ReponseCourrierService {
         ReponseCourrier savedReponse = reponseCourrierRepository.save(reponse);
 
         if (fluxOdcDirecteur) {
-            if (estDirecteurOdc) {
-                courrierService.appliquerReponseDirecteurOdcValidee(courrier.getId());
-                log.info("Réponse directeur ODC enregistrée directement — courrier {}", courrier.getId());
-            } else {
-                courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC);
-                courrierRepository.save(courrier);
-                notifierDirecteursOdcReponseEnAttente(courrier);
-                log.info("Réponse responsable d'entité enregistrée (en attente de validation) — courrier {}", courrier.getId());
-            }
+            courrierService.appliquerReponseDirecteurOdcValidee(courrier.getId(), auteur);
+            log.info("Réponse ODC enregistrée directement au nom du responsable/directeur — courrier {}", courrier.getId());
         } else {
             courrier.setStatut(StatutCourrier.REPONDU);
             courrierRepository.save(courrier);

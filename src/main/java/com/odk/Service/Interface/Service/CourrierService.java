@@ -801,7 +801,18 @@ public class CourrierService {
      */
     @Transactional
     public Courrier appliquerReponseDirecteurOdcValidee(Long courrierId) {
+        return appliquerReponseDirecteurOdcValidee(courrierId, null);
+    }
+
+    @Transactional
+    public Courrier appliquerReponseDirecteurOdcValidee(Long courrierId, Utilisateur auteur) {
         Courrier courrier = getCourrier(courrierId);
+        if (auteur != null) {
+            courrier.setUtilisateurAffecte(auteur);
+            if (auteur.getEntite() != null) {
+                courrier.setServiceOdcAffecte(auteur.getEntite());
+            }
+        }
         reponseCourrierRepository.findReponsesByCourrierId(courrierId).stream()
                 .filter(r -> !Boolean.TRUE.equals(r.getValideeDirecteurOdc()))
                 .forEach(r -> {
@@ -809,6 +820,9 @@ public class CourrierService {
                     r.setStatut(StatutCourrier.REPONDU);
                     reponseCourrierRepository.save(r);
                 });
+        
+        String nomAuteur = (auteur != null) ? (auteur.getPrenom() + " " + auteur.getNom()) : "directeur ODC";
+
         if (requiertDechargeDcirePourReponse(courrier)) {
             Entite dcire = resolveDcireDirectionOptional()
                     .orElseThrow(() -> new CourrierValidationException("Direction DCIRE introuvable."));
@@ -816,7 +830,7 @@ public class CourrierService {
             courrier.setStatut(StatutCourrier.TRANSMIS_DCIRE);
             courrierRepository.save(courrier);
             historiqueSimple(courrier, dcire, StatutCourrier.TRANSMIS_DCIRE,
-                    "Réponse directeur ODC — transmission à la DCIRE pour décharge / scan avant envoi");
+                    "Réponse " + nomAuteur + " — transmission à la DCIRE pour décharge / scan avant envoi");
             notifierDirecteursDcireDechargeReponse(courrier, dcire);
             return courrier;
         }
@@ -824,7 +838,7 @@ public class CourrierService {
         resolveDcireDirectionOptional().ifPresent(courrier::setEntite);
         courrierRepository.save(courrier);
         historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.REPONDU,
-                "Réponse directeur ODC — retour direct à la DCIRE (courrier interne division)");
+                "Réponse " + nomAuteur + " — retour direct à la DCIRE (courrier interne division)");
         notifierDirecteursDcireHub(courrier, courrier.getEntite());
         return courrier;
     }
