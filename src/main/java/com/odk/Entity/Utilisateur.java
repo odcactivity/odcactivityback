@@ -52,6 +52,7 @@ public class Utilisateur implements UserDetails {
     private Collection<? extends GrantedAuthority> authorities;
     
     @OneToMany(mappedBy = "superviseur", cascade = CascadeType.ALL)
+    @JsonIgnore
     private List<ActiviteValidation> validations = new ArrayList<>();
 
     @Override
