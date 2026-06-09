@@ -17,7 +17,7 @@ public class RapportActiviteService {
 
     private final ActiviteRepository activiteRepository;
 
-    public List<Activite> listerPourExport(Long entiteId, Long activiteId, int annee, Integer mois) {
+    public List<Activite> listerPourExport(Long entiteId, Long activiteId, Long courrierId, int annee, Integer mois) {
         Calendar cal = Calendar.getInstance();
         cal.clear();
         cal.set(Calendar.YEAR, annee);
@@ -27,14 +27,14 @@ public class RapportActiviteService {
             Date debut = cal.getTime();
             cal.add(Calendar.MONTH, 1);
             Date fin = cal.getTime();
-            return filterExclus(activiteRepository.findPourRapportGlobal(entiteId, activiteId, debut, fin));
+            return filterExclus(activiteRepository.findPourRapportGlobal(entiteId, activiteId, courrierId, debut, fin));
         }
         cal.set(Calendar.MONTH, Calendar.JANUARY);
         cal.set(Calendar.DAY_OF_MONTH, 1);
         Date debutAnnee = cal.getTime();
         cal.add(Calendar.YEAR, 1);
         Date finAnnee = cal.getTime();
-        return filterExclus(activiteRepository.findPourRapportGlobal(entiteId, activiteId, debutAnnee, finAnnee));
+        return filterExclus(activiteRepository.findPourRapportGlobal(entiteId, activiteId, courrierId, debutAnnee, finAnnee));
     }
 
     private List<Activite> filterExclus(List<Activite> raw) {

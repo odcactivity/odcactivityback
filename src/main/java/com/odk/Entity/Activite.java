@@ -75,6 +75,10 @@ public class Activite {
     @JsonDeserialize(using = JpaRefIdDeserializers.TypeActiviteRef.class)
     private TypeActivite typeActivite;
 
+    @ManyToOne(cascade = CascadeType.DETACH)
+    @JoinColumn(name = "courrier_id")
+    private Courrier courrier;
+
     @OneToMany(mappedBy = "activite", cascade = CascadeType.MERGE)
     @JsonManagedReference
     private List<Etape> etapes = new ArrayList<>();

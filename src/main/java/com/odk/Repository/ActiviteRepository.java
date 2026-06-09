@@ -121,10 +121,12 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
 
     @Query("SELECT a FROM Activite a WHERE (:entiteId IS NULL OR a.entite.id = :entiteId) "
             + "AND (:activiteId IS NULL OR a.id = :activiteId) "
+            + "AND (:courrierId IS NULL OR a.courrier.id = :courrierId) "
             + "AND a.dateDebut >= :debut AND a.dateDebut < :fin")
     List<Activite> findPourRapportGlobal(
             @Param("entiteId") Long entiteId,
             @Param("activiteId") Long activiteId,
+            @Param("courrierId") Long courrierId,
             @Param("debut") Date debut,
             @Param("fin") Date fin
     );

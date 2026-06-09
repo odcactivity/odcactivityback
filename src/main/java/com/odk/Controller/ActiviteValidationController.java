@@ -85,7 +85,13 @@ public class ActiviteValidationController {
                // envoir de mail pour la validation 
                ActiviteValidationDTO actSave=activiteValidationService.ajouterValidation(dto, fichier);
                System.out.println("ACTIVALIDATION DTO+++++++++"+actSave);               
-               envoiMailValidation(actSave,createOrreponse);
+               // L'envoi de mail ne doit pas faire échouer la création
+               try {
+                   envoiMailValidation(actSave,createOrreponse);
+               } catch (Exception mailEx) {
+                   System.err.println("⚠️ Échec de l'envoi de mail (validation sauvegardée quand même) : " + mailEx.getMessage());
+                   mailEx.printStackTrace();
+               }
 //            return ResponseEntity.ok(activiteValidationService.ajouterValidation(dto, fichier));
             return ResponseEntity.ok(actSave);
         } catch (Exception e) {

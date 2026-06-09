@@ -36,12 +36,13 @@ public class RapportGlobalController {
     public List<RapportActiviteApercuDTO> apercuActivites(
             @RequestParam(required = false) Long entiteId,
             @RequestParam(required = false) Long activiteId,
+            @RequestParam(required = false) Long courrierId,
             @RequestParam int annee,
             @RequestParam(required = false) Integer mois
     ) {
-        return rapportActiviteService.listerPourExport(entiteId, activiteId, annee, mois).stream()
-                .map(this::toApercu)
-                .collect(Collectors.toList());
+        return rapportActiviteService.listerPourExport(entiteId, activiteId, courrierId, annee, mois).stream()
+                 .map(this::toApercu)
+                 .collect(Collectors.toList());
     }
 
     private RapportActiviteApercuDTO toApercu(Activite a) {
@@ -66,11 +67,12 @@ public class RapportGlobalController {
     public void exportActivitesCsv(
             @RequestParam(required = false) Long entiteId,
             @RequestParam(required = false) Long activiteId,
+            @RequestParam(required = false) Long courrierId,
             @RequestParam int annee,
             @RequestParam(required = false) Integer mois,
             HttpServletResponse response
     ) throws IOException {
-        List<Activite> list = rapportActiviteService.listerPourExport(entiteId, activiteId, annee, mois);
+        List<Activite> list = rapportActiviteService.listerPourExport(entiteId, activiteId, courrierId, annee, mois);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader("Content-Disposition", "attachment; filename=\"rapport_activites.csv\"");
         PrintWriter w = response.getWriter();
@@ -101,28 +103,36 @@ public class RapportGlobalController {
     public void exportActivitesPdf(
             @RequestParam(required = false) Long entiteId,
             @RequestParam(required = false) Long activiteId,
+            @RequestParam(required = false) Long courrierId,
             @RequestParam int annee,
             @RequestParam(required = false) Integer mois,
             HttpServletResponse response
     ) throws IOException {
-        List<Activite> list = rapportActiviteService.listerPourExport(entiteId, activiteId, annee, mois);
+        List<Activite> list = rapportActiviteService.listerPourExport(entiteId, activiteId, courrierId, annee, mois);
+        response.setContentType("application/pdf");
         response.setHeader("Content-Disposition", "attachment; filename=\"rapport_activites.pdf\"");
         Document document = new Document();
-        PdfWriter.getInstance(document, response.getOutputStream());
-        document.open();
-        document.add(new Paragraph("Rapport global des activités ODC"));
-        document.add(new Paragraph("Période : " + (mois != null ? "mois " + mois + " / " : "") + annee));
-        document.add(new Paragraph("Nombre d'activités : " + list.size()));
-        document.add(new Paragraph(" "));
-        for (Activite a : list) {
-            Entite e = a.getEntite();
-            String ligne = (a.getNom() != null ? a.getNom() : "") + " | "
-                    + (a.getStatut() != null ? a.getStatut().name() : "") + " | "
-                    + (e != null && e.getNom() != null ? e.getNom() : "") + " | "
-                    + (a.getDateDebut() != null ? DF.format(a.getDateDebut()) : "");
-            document.add(new Paragraph(ligne));
+        try {
+            PdfWriter.getInstance(document, response.getOutputStream());
+            document.open();
+            document.add(new Paragraph("Rapport global des activités ODC"));
+            document.add(new Paragraph("Période : " + (mois != null ? "mois " + mois + " / " : "") + annee));
+            document.add(new Paragraph("Nombre d'activités : " + list.size()));
+            document.add(new Paragraph(" "));
+            for (Activite a : list) {
+                Entite e = a.getEntite();
+                String ligne = (a.getNom() != null ? a.getNom() : "") + " | "
+                        + (a.getStatut() != null ? a.getStatut().name() : "") + " | "
+                        + (e != null && e.getNom() != null ? e.getNom() : "") + " | "
+                        + (a.getDateDebut() != null ? DF.format(a.getDateDebut()) : "");
+                document.add(new Paragraph(ligne));
+            }
+        } finally {
+            if (document.isOpen()) {
+                document.close();
+            }
         }
-        document.close();
+        response.flushBuffer();
     }
 
     private static String safeCsv(String s) {

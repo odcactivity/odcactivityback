@@ -2223,4 +2223,8 @@ public class CourrierService {
         }
         supprimerCourrier(courrierId);
     }
+
+    public List<Courrier> listerTousLesCourriers() {
+        return courrierRepository.findAllOrderByDateReceptionDesc();
+    }
 }

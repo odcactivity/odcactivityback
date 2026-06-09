@@ -36,37 +36,45 @@ public class ActiviteValidationService{
     @Autowired
     private UtilisateurRepository utilisateurRepository;
 
+    @Autowired
+    private ActiviteValidationMapper activiteValidationMapper;
+
 
     // Ajouter une validation avec fichier
     public ActiviteValidationDTO ajouterValidation(ActiviteValidationDTO dto, MultipartFile fichier) throws IOException {
-        ActiviteValidation validation = ActiviteValidationMapper.INSTANCE.toEntity(dto);
+        ActiviteValidation validation = activiteValidationMapper.toEntity(dto);
+
+        // Charger l'entité Activite managée depuis le repository
+        if (dto.getActiviteId() != null) {
+            activiteRepository.findById(dto.getActiviteId()).ifPresent(validation::setActivite);
+        }
 
         if (fichier != null && !fichier.isEmpty()) {
             validation.setFichierChiffre(fichier.getBytes());
             validation.setFichierjoint(fichier.getOriginalFilename());
         }
         if (dto.getSuperviseurId() != null) {
-        utilisateurRepository.findById(dto.getSuperviseurId()).ifPresent(validation::setSuperviseur);
-    } else {
-        validation.setSuperviseur(null);
-    }
+            utilisateurRepository.findById(dto.getSuperviseurId()).ifPresent(validation::setSuperviseur);
+        } else {
+            validation.setSuperviseur(null);
+        }
 
         ActiviteValidation saved = validationRepository.save(validation);
-        return ActiviteValidationMapper.INSTANCE.toDto(saved);
+        return activiteValidationMapper.toDto(saved);
     }
 
     // Liste toutes les validations
     public List<ActiviteValidationDTO> listeValidations() {
         return validationRepository.findAll()
                 .stream()
-                .map(ActiviteValidationMapper.INSTANCE::toDto)
+                .map(activiteValidationMapper::toDto)
                 .collect(Collectors.toList());
     }
 
     // Récupérer une validation par ID
     public ActiviteValidationDTO getValidation(Long id) {
         Optional<ActiviteValidation> opt = validationRepository.findById(id);
-        return opt.map(ActiviteValidationMapper.INSTANCE::toDto)
+        return opt.map(activiteValidationMapper::toDto)
                   .orElseThrow(() -> new RuntimeException("Validation non trouvée"));
     }
 

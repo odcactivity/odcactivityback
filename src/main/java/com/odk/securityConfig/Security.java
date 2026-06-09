@@ -123,7 +123,7 @@ public class Security {
         ));
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setExposedHeaders(Arrays.asList("Authorization"));
+        configuration.setExposedHeaders(Arrays.asList("Authorization", "Content-Disposition", "Content-Type"));
         configuration.setAllowCredentials(true); // important si tu utilises des cookies ou tokens
         configuration.setMaxAge(3600L);
 

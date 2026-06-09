@@ -610,4 +610,10 @@ public class CourrierController {
                     .body(null);
         }
     }
+
+    @GetMapping("/tous")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR_ODC')")
+    public ResponseEntity<List<Courrier>> listerTousLesCourriers() {
+        return ResponseEntity.ok(courrierService.listerTousLesCourriers());
+    }
 }

@@ -6,6 +6,7 @@ import com.odk.Entity.Etape;
 import com.odk.Entity.Salle;
 import com.odk.Entity.TypeActivite;
 import com.odk.Entity.Utilisateur;
+import com.odk.Entity.Courrier;
 import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
 import java.util.ArrayList;
@@ -44,6 +45,7 @@ public class ActiviteDTO {
     private Integer candidatureRecu;
     private Integer candidatureFemme;
     private Integer cible;
+    private Courrier courrier;
 
     /** Note du responsable ODK lors d'un retour au personnel pour correction */
     private String noteResponsableOdk;
