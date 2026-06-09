@@ -51,8 +51,16 @@ public class ReponseCourrierService {
                 .orElseThrow(() -> new CourrierValidationException("Courrier non trouvé"));
 
         boolean fluxOdcDirecteur = courrierService.requiertValidationReponseDirecteurOdc(courrier);
+        boolean estDirecteurOdc = false;
+        if (auteur != null && auteur.getRole() != null) {
+            String role = auteur.getRole().getNom() != null ? auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT) : "";
+            if ("DIRECTEUR_ODC".equals(role)) {
+                estDirecteurOdc = true;
+            }
+        }
+
         if (fluxOdcDirecteur) {
-            verifierDirecteurOdc(auteur);
+            verifierDirecteurOuResponsableOdc(auteur);
         } else if (auteur != null && auteur.getRole() != null) {
             verifierPeutRepondreStructure(auteur);
         }
@@ -81,7 +89,11 @@ public class ReponseCourrierService {
         reponse.setEmail(dto.getEmail());
         reponse.setObjet(dto.getObjet());
         reponse.setMessage(dto.getMessage());
-        reponse.setValideeDirecteurOdc(fluxOdcDirecteur);
+        
+        // Si c'est le flux ODC, la réponse n'est validée d'office QUE si c'est le Directeur ODC qui la soumet.
+        // Si c'est un responsable d'entité, elle doit d'abord être validée par le Directeur ODC.
+        boolean reponseFinaleOdc = fluxOdcDirecteur && estDirecteurOdc;
+        reponse.setValideeDirecteurOdc(reponseFinaleOdc || !fluxOdcDirecteur);
 
         // Gestion des fichiers joints
         if (!fichiersJoints.isEmpty()) {
@@ -99,8 +111,15 @@ public class ReponseCourrierService {
         ReponseCourrier savedReponse = reponseCourrierRepository.save(reponse);
 
         if (fluxOdcDirecteur) {
-            courrierService.appliquerReponseDirecteurOdcValidee(courrier.getId());
-            log.info("Réponse directeur ODC enregistrée — courrier {}", courrier.getId());
+            if (estDirecteurOdc) {
+                courrierService.appliquerReponseDirecteurOdcValidee(courrier.getId());
+                log.info("Réponse directeur ODC enregistrée directement — courrier {}", courrier.getId());
+            } else {
+                courrier.setStatut(StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC);
+                courrierRepository.save(courrier);
+                notifierDirecteursOdcReponseEnAttente(courrier);
+                log.info("Réponse responsable d'entité enregistrée (en attente de validation) — courrier {}", courrier.getId());
+            }
         } else {
             courrier.setStatut(StatutCourrier.REPONDU);
             courrierRepository.save(courrier);
@@ -110,16 +129,15 @@ public class ReponseCourrierService {
         return savedReponse;
     }
 
-    private void verifierDirecteurOdc(Utilisateur auteur) {
+    private void verifierDirecteurOuResponsableOdc(Utilisateur auteur) {
         if (auteur == null || auteur.getRole() == null) {
             throw new CourrierValidationException(
-                    "Seul le directeur ODC peut répondre aux courriers de la division Orange Digital Center.");
+                    "Seul le directeur ODC ou les responsables d'entités peuvent répondre aux courriers de la division Orange Digital Center.");
         }
-        String role = auteur.getRole().getNom() != null ? auteur.getRole().getNom().trim() : "";
-        if (!"DIRECTEUR_ODC".equalsIgnoreCase(role)) {
+        String role = auteur.getRole().getNom() != null ? auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT) : "";
+        if (!"DIRECTEUR_ODC".equals(role) && !ResponsableEntiteSupport.estRoleResponsableEntite(role)) {
             throw new CourrierValidationException(
-                    "Seul le directeur ODC peut répondre aux courriers de la division Orange Digital Center. "
-                            + "La préparation par les responsables d'entité se fait hors application.");
+                    "Seul le directeur ODC ou les responsables d'entités de l'ODC peuvent répondre aux courriers.");
         }
     }
 
