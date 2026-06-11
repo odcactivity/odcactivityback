@@ -128,5 +128,9 @@ public class Courrier {
     private boolean alerteEnvoyee = false;
 
 
+    /** Fichier déposé lors de l'archivage par le responsable. */
+    @Column(name = "fichier_archive")
+    private String fichierArchive;
+
 
 }

@@ -55,6 +55,7 @@ public class Entite {
     @OneToMany(mappedBy = "parent")
     private List<Entite> sousEntite;
 
+    @JsonIgnore
     @ManyToMany
     @JoinTable(
             name = "entite_type_activite",

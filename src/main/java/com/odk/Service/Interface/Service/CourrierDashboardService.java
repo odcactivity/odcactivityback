@@ -80,8 +80,10 @@ public class CourrierDashboardService {
         }
         for (Courrier c : list) {
             try {
-                categorieDepuisHistorique(c, scope, histByCourrierId, principal)
-                        .ifPresent(cat -> m.merge(cat, 1L, Long::sum));
+                Set<Cat> cats = categoriesPourCourrier(c, scope, histByCourrierId.get(c.getId()), principal);
+                for (Cat cat : cats) {
+                    m.merge(cat, 1L, Long::sum);
+                }
             } catch (RuntimeException ex) {
                 // Ne bloque pas le dashboard pour un courrier incohérent.
             }
@@ -135,19 +137,18 @@ public class CourrierDashboardService {
                     if (dr == null || dr.isBefore(b.start) || dr.isAfter(b.end)) {
                         continue;
                     }
-                    Optional<Cat> cat = categorieDepuisHistorique(c, scope, histByCourrierId, principal);
-                    if (cat.isEmpty()) {
-                        continue;
+                    Set<Cat> cats = categoriesPourCourrier(c, scope, histByCourrierId.get(c.getId()), principal);
+                    for (Cat cat : cats) {
+                        switch (cat) {
+                            case emis -> row.setEmis(row.getEmis() + 1);
+                            case repondu -> row.setRepondu(row.getRepondu() + 1);
+                            case enAttente -> row.setEnAttente(row.getEnAttente() + 1);
+                            case recu -> row.setRecu(row.getRecu() + 1);
+                            case valide -> row.setValide(row.getValide() + 1);
+                            case nonRepondu -> row.setNonRepondu(row.getNonRepondu() + 1);
+                        }
+                        safeDetailRow(c, cat).ifPresent(d -> row.getDetails().add(d));
                     }
-                    switch (cat.get()) {
-                        case emis -> row.setEmis(row.getEmis() + 1);
-                        case repondu -> row.setRepondu(row.getRepondu() + 1);
-                        case enAttente -> row.setEnAttente(row.getEnAttente() + 1);
-                        case recu -> row.setRecu(row.getRecu() + 1);
-                        case valide -> row.setValide(row.getValide() + 1);
-                        case nonRepondu -> row.setNonRepondu(row.getNonRepondu() + 1);
-                    }
-                    safeDetailRow(c, cat.get()).ifPresent(d -> row.getDetails().add(d));
                 } catch (RuntimeException ex) {
                     // Skip d'un enregistrement invalide, sans interrompre toute la série.
                 }
@@ -253,106 +254,76 @@ public class CourrierDashboardService {
         return "DIRECTEUR_ODC".equals(role) || "ADMIN".equals(role) || "SUPERADMIN".equals(role);
     }
 
-    private Optional<Cat> categorieFluxDcireVersOdcPourOdc(Courrier c, StatutCourrier statutCourant, Utilisateur principal) {
-        if (!courrierService.estCourrierEmissionDcireVersOdc(c) || statutCourant == null) {
-            return Optional.empty();
-        }
-        if (statutCourant == StatutCourrier.REPONDU || statutCourant == StatutCourrier.TRANSMIS_DCIRE) {
-            return Optional.of(Cat.repondu);
-        }
-        if (statutCourant == StatutCourrier.ENVOYER
-                || statutCourant == StatutCourrier.IMPUTER
-                || statutCourant == StatutCourrier.EN_COURS
-                || statutCourant == StatutCourrier.ATTENTE_VALIDATION_REPONSE_DIRECTEUR_ODC) {
-            if (isOdcProductDashboardRole(principal)) {
-                return Optional.of(Cat.nonRepondu);
-            }
-            return Optional.of(Cat.recu);
-        }
-        return Optional.empty();
-    }
-
-    private Optional<Cat> categorieDepuisHistorique(
+    private Set<Cat> categoriesPourCourrier(
             Courrier c,
             DashboardScope scope,
-            Map<Long, List<HistoriqueCourrier>> histByCourrierId,
+            List<HistoriqueCourrier> hist,
             Utilisateur principal) {
-        StatutCourrier statutCourant = c != null ? c.getStatut() : null;
-        // La source de vérité doit rester le statut courant du courrier
-        // (l'historique peut être incomplet sur certains anciens enregistrements).
-        if (statutCourant == StatutCourrier.ARCHIVER) {
-            // Même si le courrier est archivé, il a été reçu : le comptabiliser comme 'reçu'
-            return Optional.of(Cat.recu);
+        Set<Cat> categories = new java.util.HashSet<>();
+        if (c == null) {
+            return categories;
         }
-        if (scope == DashboardScope.ODC) {
-            Optional<Cat> fluxOdc = categorieFluxDcireVersOdcPourOdc(c, statutCourant, principal);
-            if (fluxOdc.isPresent()) {
-                return fluxOdc;
-            }
-        }
-        if (statutCourant == StatutCourrier.REPONDU) {
-            return Optional.of(Cat.repondu);
+        StatutCourrier statutCourant = c.getStatut();
+        if (statutCourant == null) {
+            return categories;
         }
 
-        List<HistoriqueCourrier> hist = c != null && c.getId() != null ? histByCourrierId.get(c.getId()) : null;
-        StatutCourrier s = null;
-        if (hist != null && !hist.isEmpty()) {
-            s = hist.get(hist.size() - 1).getStatut();
-        }
-        if (s == null) {
-            s = statutCourant;
-        }
-        if (s == null || s == StatutCourrier.ARCHIVER) {
-            return Optional.empty();
-        }
-        if (s == StatutCourrier.REPONDU) {
-            return Optional.of(Cat.repondu);
-        }
-        if (scope == DashboardScope.DCIRE) {
+        // 1. Déterminer si le courrier a été répondu (historiquement ou actuellement)
+        boolean wasRepondu = (statutCourant == StatutCourrier.REPONDU || statutCourant == StatutCourrier.TRANSMIS_DCIRE)
+                || (hist != null && hist.stream().anyMatch(h -> h.getStatut() == StatutCourrier.REPONDU || h.getStatut() == StatutCourrier.TRANSMIS_DCIRE));
+
+        // 2. Déterminer si le courrier est / a été en attente
+        boolean wasEnAttente = EN_ATTENTE.contains(statutCourant)
+                || (hist != null && hist.stream().anyMatch(h -> EN_ATTENTE.contains(h.getStatut())));
+
+        // 3. Déterminer si le courrier est / a été validé (en cours ou imputé)
+        boolean wasValide = (statutCourant == StatutCourrier.EN_COURS || statutCourant == StatutCourrier.IMPUTER)
+                || (hist != null && hist.stream().anyMatch(h -> h.getStatut() == StatutCourrier.EN_COURS || h.getStatut() == StatutCourrier.IMPUTER));
+
+        // Maintenant, affecter les catégories selon le scope
+        if (scope == DashboardScope.ODC) {
+            categories.add(Cat.recu);
+            if (wasRepondu) {
+                categories.add(Cat.repondu);
+            } else {
+                categories.add(Cat.nonRepondu);
+            }
+            if (wasEnAttente) {
+                categories.add(Cat.enAttente);
+            }
+            if (wasValide) {
+                categories.add(Cat.valide);
+            }
+        } else if (scope == DashboardScope.DCIRE) {
             Long dcireId = resolveDcireDirectionIdForDashboard();
             if (dcireId != null && estCourrierEmisParStructure(c, dcireId)) {
-                if (statutCourant == StatutCourrier.REPONDU || statutCourant == StatutCourrier.TRANSMIS_DCIRE) {
-                    return Optional.of(Cat.repondu);
+                categories.add(Cat.emis);
+                if (wasRepondu) {
+                    categories.add(Cat.repondu);
+                } else {
+                    categories.add(Cat.nonRepondu);
                 }
-                if (statutCourant == StatutCourrier.ENVOYER
-                        || statutCourant == StatutCourrier.IMPUTER
-                        || statutCourant == StatutCourrier.EN_COURS) {
-                    return Optional.of(Cat.nonRepondu);
-                }
-                return Optional.empty();
             }
-            return Optional.empty();
-        }
-        if (scope == DashboardScope.STRUCTURE) {
-            if (s == StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE
-                    || s == StatutCourrier.ENVOYER
-                    || s == StatutCourrier.EN_COURS
-                    || s == StatutCourrier.IMPUTER) {
-                return Optional.of(Cat.recu);
+            // Si le courrier a été transmis à la DCIRE (ou son statut courant est TRANSMIS_DCIRE)
+            if (statutCourant == StatutCourrier.TRANSMIS_DCIRE || (hist != null && hist.stream().anyMatch(h -> h.getStatut() == StatutCourrier.TRANSMIS_DCIRE))) {
+                categories.add(Cat.recu);
             }
-        }
-        if (EN_ATTENTE.contains(s)) {
-            return Optional.of(Cat.enAttente);
-        }
-        if (s == StatutCourrier.ENVOYER) {
-            return Optional.of(Cat.recu);
-        }
-        if (s == StatutCourrier.EN_COURS || s == StatutCourrier.IMPUTER) {
-            return Optional.of(Cat.valide);
-        }
-        if (s == StatutCourrier.TRANSMIS_DCIRE) {
-            if (scope == DashboardScope.DCIRE) {
-                return Optional.of(Cat.recu);
+            if (wasEnAttente) {
+                categories.add(Cat.enAttente);
             }
-            return Optional.of(Cat.emis);
-        }
-        if (scope == DashboardScope.DCIRE) {
-            if (s == StatutCourrier.ATTENTE_TRAITEMENT_RESPONSABLE_ODK
-                    || s == StatutCourrier.ATTENTE_VALIDATION_DIRECTEUR_STRUCTURE) {
-                return Optional.of(Cat.enAttente);
+        } else if (scope == DashboardScope.STRUCTURE) {
+            categories.add(Cat.recu);
+            if (wasRepondu) {
+                categories.add(Cat.repondu);
+            } else {
+                categories.add(Cat.nonRepondu);
+            }
+            if (wasEnAttente) {
+                categories.add(Cat.enAttente);
             }
         }
-        return Optional.empty();
+
+        return categories;
     }
 
     private List<Courrier> loadCourriers() {

@@ -348,13 +348,21 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.listerCourriersArchivesPourResponsableEntite(utilisateur));
     }
 
-    @PatchMapping("/responsable-entite/{id}/archiver")
+    @PostMapping(value = "/responsable-entite/{id}/archiver", consumes = "multipart/form-data")
     @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
     public ResponseEntity<Void> archiverCourrierResponsableEntite(
             @PathVariable Long id,
-            @AuthenticationPrincipal Utilisateur utilisateur) {
-        courrierService.archiverCourrierParResponsableEntite(id, utilisateur);
+            @RequestParam(required = false) MultipartFile fichierArchive,
+            @AuthenticationPrincipal Utilisateur utilisateur) throws IOException {
+        courrierService.archiverCourrierParResponsableEntite(id, utilisateur, fichierArchive);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/responsable-entite/{id}/fichier-archive")
+    @PreAuthorize(ROLES_RESPONSABLE_ENTITE)
+    public ResponseEntity<InputStreamResource> telechargerFichierArchive(
+            @PathVariable Long id) throws IOException {
+        return courrierService.telechargerFichierArchive(id);
     }
 
     @GetMapping("/responsable-odk/services-odc")

@@ -717,7 +717,7 @@ public class CourrierService {
     }
 
     @Transactional
-    public void archiverCourrierParResponsableEntite(Long courrierId, Utilisateur responsable) {
+    public void archiverCourrierParResponsableEntite(Long courrierId, Utilisateur responsable, MultipartFile fichierArchive) throws IOException {
         ResponsableEntiteSupport.assertRoleResponsableEntite(responsable);
         Courrier courrier = getCourrier(courrierId);
         List<Entite> entitesRole = listerEntitesPourRole(ResponsableEntiteSupport.roleNom(responsable));
@@ -727,7 +727,33 @@ public class CourrierService {
             throw new CourrierValidationException(
                     "Vous ne pouvez archiver que les courriers délégués à votre entité.");
         }
+        // Sauvegarder le fichier d'archive si fourni
+        if (fichierArchive != null && !fichierArchive.isEmpty()) {
+            String cheminArchive = sauvegarderFichier(fichierArchive);
+            courrier.setFichierArchive(cheminArchive);
+        }
         archiverCourrier(courrierId, responsable);
+    }
+
+    /**
+     * Télécharger le fichier déposé lors de l'archivage d'un courrier.
+     */
+    @Transactional(readOnly = true)
+    public ResponseEntity<InputStreamResource> telechargerFichierArchive(Long courrierId) throws IOException {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getFichierArchive() == null || courrier.getFichierArchive().isBlank()) {
+            throw new CourrierValidationException("Aucun fichier d'archive pour ce courrier.");
+        }
+        File fichier = new File(courrier.getFichierArchive());
+        if (!fichier.exists()) {
+            throw new CourrierValidationException("Fichier d'archive introuvable sur le serveur.");
+        }
+        InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
+                .contentLength(fichier.length())
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
     }
 
     private List<Long> resoudreEntiteIdsCourrierPourResponsable(Utilisateur responsable) {
