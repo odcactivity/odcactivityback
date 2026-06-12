@@ -799,6 +799,28 @@ public class CourrierService {
                         + "Le directeur ODC délègue physiquement puis saisit la réponse officielle.");
     }
 
+    /** Courrier reçu au hub DCIRE (pas émis par la DCIRE). */
+    public boolean estCourrierRecuAuHubDcire(Courrier courrier) {
+        if (courrier == null) {
+            return false;
+        }
+        Optional<Entite> dcireOpt = resolveDcireDirectionOptional();
+        if (dcireOpt.isEmpty()) {
+            return false;
+        }
+        Long dcireId = dcireOpt.get().getId();
+        if (courrier.getStructureOrigine() != null
+                && Objects.equals(dcireId, courrier.getStructureOrigine().getId())) {
+            return false;
+        }
+        if (courrier.getEntite() != null && Objects.equals(dcireId, courrier.getEntite().getId())) {
+            return true;
+        }
+        return courrier.getStatut() == StatutCourrier.TRANSMIS_DCIRE
+                && courrier.getEntite() != null
+                && Objects.equals(dcireId, courrier.getEntite().getId());
+    }
+
     public boolean requiertValidationReponseDirecteurOdc(Courrier courrier) {
         if (courrier == null) {
             return false;

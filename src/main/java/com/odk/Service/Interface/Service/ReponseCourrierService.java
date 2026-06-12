@@ -61,6 +61,8 @@ public class ReponseCourrierService {
 
         if (fluxOdcDirecteur) {
             verifierDirecteurOuResponsableOdc(auteur);
+        } else if (courrierService.estCourrierRecuAuHubDcire(courrier)) {
+            verifierPeutRepondreDcireHub(auteur);
         } else if (auteur != null && auteur.getRole() != null) {
             verifierPeutRepondreStructure(auteur);
         }
@@ -130,6 +132,17 @@ public class ReponseCourrierService {
             throw new CourrierValidationException(
                     "Seul le directeur ODC ou les responsables d'entités de l'ODC peuvent répondre aux courriers.");
         }
+    }
+
+    private void verifierPeutRepondreDcireHub(Utilisateur auteur) {
+        if (auteur == null || auteur.getRole() == null || auteur.getRole().getNom() == null) {
+            throw new CourrierValidationException("Action réservée au directeur DCIRE.");
+        }
+        String role = auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT);
+        if ("DIRECTEUR".equals(role) || "DCIRE".equals(role)) {
+            return;
+        }
+        throw new CourrierValidationException("Seul le directeur DCIRE peut répondre aux courriers reçus au hub.");
     }
 
     private void verifierPeutRepondreStructure(Utilisateur auteur) {
