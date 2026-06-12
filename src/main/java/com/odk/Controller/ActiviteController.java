@@ -289,15 +289,15 @@ public class ActiviteController {
     @GetMapping("/nombreActivitesEncours")
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEncours() {
-        long count = activiteRepository.countByStatut(Statut.En_Cours); // Compte les activités avec statut "En_Cours"
-        return ResponseEntity.ok(count); // Retourne le nombre d'activités
+        long count = activiteRepository.countByStatutIn(
+                Arrays.asList(Statut.En_Cours, Statut.En_Attente));
+        return ResponseEntity.ok(count);
     }
 
     @GetMapping("/nombreActivitesEnAttente")
     @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEnAttente() {
-        long count = activiteRepository.countByStatutIn(
-                Arrays.asList(Statut.En_Attente, Statut.En_Validation_Directeur_ODC));
+        long count = activiteRepository.countByStatut(Statut.En_Validation_Directeur_ODC);
         return ResponseEntity.ok(count);
     }
 
