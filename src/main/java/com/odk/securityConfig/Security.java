@@ -119,7 +119,8 @@ public class Security {
                 "http://localhost:8089",   // port du backend
                 "http://localhost:63243",  // nouveau port Angular
                 "https://odc-web-6afd.onrender.com",
-                "http://hebergement-odc-activite-front.s3-website-us-east-1.amazonaws.com" 
+                "http://activiteodc-env.eba-qpcww8sx.us-east-1.elasticbeanstalk.com",
+                "http://hebergement-odc-activite-front.s3-website-us-east-1.amazonaws.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
