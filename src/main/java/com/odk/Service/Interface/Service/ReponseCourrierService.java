@@ -7,6 +7,7 @@ import com.odk.Enum.StatutCourrier;
 import com.odk.Repository.CourrierRepository;
 import com.odk.Repository.ReponseCourrierRepository;
 import com.odk.Repository.UtilisateurRepository;
+import com.odk.Repository.HistoriqueCourrierRepository;
 import com.odk.dto.ReponseCourrierDTO;
 import com.odk.exception.CourrierValidationException;
 import com.odk.exception.FileValidationException;
@@ -36,6 +37,7 @@ public class ReponseCourrierService {
     private final UtilisateurRepository utilisateurRepository;
     private final CourrierService courrierService;
     private final EmailService emailService;
+    private final HistoriqueCourrierRepository historiqueCourrierRepository;
     private final String uploadDir = "uploads/reponses";
 
     /**
@@ -110,7 +112,53 @@ public class ReponseCourrierService {
 
         ReponseCourrier savedReponse = reponseCourrierRepository.save(reponse);
 
-        if (fluxOdcDirecteur) {
+        if (dto.getEmailDestinataire() != null && !dto.getEmailDestinataire().isBlank()) {
+            courrier.setStatut(StatutCourrier.REPONDU);
+            courrierRepository.save(courrier);
+            
+            List<java.io.File> filesToAttach = new java.util.ArrayList<>();
+            for (String chemin : fichiersJoints) {
+                if (chemin != null && !chemin.isBlank()) {
+                    filesToAttach.add(new java.io.File(chemin));
+                }
+            }
+            
+            String emailBody = "<!DOCTYPE html><html><body>"
+                    + "<div style='font-family: Arial, sans-serif; border: 2px solid #ff7900; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto;'>"
+                    + "<div style='background-color: #ff7900; color: white; padding: 15px; font-size: 22px; font-weight: bold; text-align: center; border-top-left-radius: 6px; border-top-right-radius: 6px;'>"
+                    + "Orange Digital Center"
+                    + "</div>"
+                    + "<div style='padding: 20px; background-color: #ffffff; color: #2c3e50; line-height: 1.6;'>"
+                    + "<h3 style='color: #2c3e50; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;'>Réponse à votre courrier</h3>"
+                    + "<p>Bonjour,</p>"
+                    + "<p>Nous faisons suite à votre courrier référencé <b>" + (courrier.getNumero() != null ? courrier.getNumero() : "") + "</b> ayant pour objet : <i>" + (courrier.getObjet() != null ? courrier.getObjet() : "") + "</i>.</p>"
+                    + "<div style='background-color: #f8f9fa; border-left: 4px solid #ff7900; padding: 15px; margin: 20px 0; border-radius: 4px;'>"
+                    + "<p style='margin: 0; font-weight: bold; color: #2c3e50; margin-bottom: 10px;'>Message de réponse :</p>"
+                    + "<p style='margin: 0; white-space: pre-wrap;'>" + dto.getMessage() + "</p>"
+                    + "</div>"
+                    + "<p>Vous trouverez ci-joint la pièce jointe correspondante.</p>"
+                    + "<p>Cordialement,<br>L'équipe Orange Digital Center</p>"
+                    + "</div>"
+                    + "<hr style='border: none; border-top: 1px solid #dee2e6; margin: 20px 0;'>"
+                    + "<p style='font-size: 0.8em; color: #888888; text-align: center; margin: 0;'>"
+                    + "Ceci est un envoi automatique depuis la plateforme Orange Digital Center. Merci de ne pas y répondre directement."
+                    + "</p>"
+                    + "</div></body></html>";
+            
+            emailService.sendEmailWithAttachments(dto.getEmailDestinataire().trim(), dto.getObjet(), emailBody, filesToAttach);
+            
+            com.odk.Entity.HistoriqueCourrier historiqueHC = new com.odk.Entity.HistoriqueCourrier();
+            historiqueHC.setCourrier(courrier);
+            historiqueHC.setUtilisateur(auteur);
+            historiqueHC.setEntite(courrier.getEntite());
+            historiqueHC.setStatut(StatutCourrier.REPONDU);
+            historiqueHC.setCommentaire("Réponse envoyée directement par email à : " + dto.getEmailDestinataire());
+            historiqueHC.setDateAction(new Date());
+            historiqueHC.setAncienneEntite(courrier.getEntite());
+            historiqueHC.setNouvelleEntite(courrier.getEntite());
+            historiqueCourrierRepository.save(historiqueHC);
+            log.info("Réponse envoyée directement par email à {} pour le courrier {}", dto.getEmailDestinataire(), courrier.getId());
+        } else if (fluxOdcDirecteur) {
             courrierService.appliquerReponseDirecteurOdcValidee(courrier.getId(), auteur);
             log.info("Réponse ODC enregistrée directement au nom du responsable/directeur — courrier {}", courrier.getId());
         } else {

@@ -15,6 +15,7 @@ public class ReponseCourrierDTO {
     private String email;
     private String objet;
     private String message;
+    private String emailDestinataire;
     private MultipartFile file;
     private List<MultipartFile> attachments;
 }

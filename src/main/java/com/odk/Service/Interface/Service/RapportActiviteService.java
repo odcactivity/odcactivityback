@@ -64,7 +64,12 @@ public class RapportActiviteService {
                 .filter(c -> c.getDateReception() != null 
                         && !c.getDateReception().before(debut) 
                         && c.getDateReception().before(fin))
-                .filter(c -> entiteId == null || (c.getEntite() != null && entiteId.equals(c.getEntite().getId())))
+                .filter(c -> entiteId == null || 
+                        (c.getEntite() != null && entiteId.equals(c.getEntite().getId())) ||
+                        (c.getStructureOrigine() != null && entiteId.equals(c.getStructureOrigine().getId())) ||
+                        (c.getDirectionInitial() != null && entiteId.equals(c.getDirectionInitial().getId())) ||
+                        (c.getCibleInterneDirection() != null && entiteId.equals(c.getCibleInterneDirection().getId())) ||
+                        (c.getServiceOdcAffecte() != null && entiteId.equals(c.getServiceOdcAffecte().getId())))
                 .filter(c -> courrierId == null || courrierId.equals(c.getId()))
                 .collect(Collectors.toList());
     }

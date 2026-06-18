@@ -2289,4 +2289,25 @@ public class CourrierService {
     public List<Courrier> listerTousLesCourriers() {
         return courrierRepository.findAllOrderByDateReceptionDesc();
     }
+
+    @Transactional
+    public void ajouterFichierArchive(Long courrierId, MultipartFile file, Utilisateur utilisateur) throws IOException {
+        Courrier c = getCourrier(courrierId);
+        if (file != null && !file.isEmpty()) {
+            String path = sauvegarderFichierSecurise(file);
+            c.setFichierArchive(path);
+            courrierRepository.save(c);
+            
+            HistoriqueCourrier h = new HistoriqueCourrier();
+            h.setCourrier(c);
+            h.setUtilisateur(utilisateur);
+            h.setEntite(c.getEntite());
+            h.setStatut(c.getStatut());
+            h.setCommentaire("Mise à jour du fichier d'archive");
+            h.setDateAction(new Date());
+            h.setAncienneEntite(c.getEntite());
+            h.setNouvelleEntite(c.getEntite());
+            historiqueRepository.save(h);
+        }
+    }
 }

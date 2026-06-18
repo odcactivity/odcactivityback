@@ -562,6 +562,7 @@ public class CourrierController {
             @RequestParam String email,
             @RequestParam String objet,
             @RequestParam String message,
+            @RequestParam(required = false) String emailDestinataire,
             @RequestParam(required = false) MultipartFile file,
             @RequestParam(required = false) List<MultipartFile> attachments,
             @AuthenticationPrincipal Utilisateur utilisateur
@@ -572,6 +573,7 @@ public class CourrierController {
         dto.setEmail(email);
         dto.setObjet(objet);
         dto.setMessage(message);
+        dto.setEmailDestinataire(emailDestinataire);
         dto.setFile(file);
         dto.setAttachments(attachments);
 
@@ -623,5 +625,23 @@ public class CourrierController {
     @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR_ODC')")
     public ResponseEntity<List<Courrier>> listerTousLesCourriers() {
         return ResponseEntity.ok(courrierService.listerTousLesCourriers());
+    }
+
+    @PostMapping(value = "/{id}/fichier-archive", consumes = "multipart/form-data")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    public ResponseEntity<Void> uploadFichierArchive(
+            @PathVariable Long id,
+            @RequestParam MultipartFile fichierArchive,
+            @AuthenticationPrincipal Utilisateur utilisateur
+    ) throws IOException {
+        courrierService.ajouterFichierArchive(id, fichierArchive, utilisateur);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{id}/fichier-archive")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','RESPONSABLE_ODK','RESPONSABLE_FABLAB','RESPONSABLE_OFAB','RESPONSABLE_MULTIMEDIA')")
+    public ResponseEntity<InputStreamResource> telechargerFichierArchiveGeneral(
+            @PathVariable Long id) throws IOException {
+        return courrierService.telechargerFichierArchive(id);
     }
 }
