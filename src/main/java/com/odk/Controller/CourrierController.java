@@ -328,6 +328,24 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.emettreCourrierParDcire(cibleDirectionId, dto));
     }
 
+    @PostMapping("/odc/emission-email")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR_ODC')")
+    public ResponseEntity<Courrier> emettreCourrierOdcParEmail(
+            @RequestParam(required = false) String numero,
+            @RequestParam String expediteur,
+            @RequestParam String objet,
+            @RequestParam String emailDestinataire,
+            @RequestParam Long directionId,
+            @RequestParam(required = false) MultipartFile fichier,
+            @AuthenticationPrincipal Utilisateur auteur
+    ) throws IOException {
+        Courrier courrier = courrierService.emettreCourrierOdcParEmail(
+                numero, expediteur, objet, emailDestinataire, directionId, fichier, auteur
+        );
+        return ResponseEntity.ok(courrier);
+    }
+
+
     @GetMapping("/responsable-odk/courriers/en-attente")
     @PreAuthorize("hasRole('RESPONSABLE_ODK')")
     public ResponseEntity<List<Courrier>> courriersEnAttenteResponsableOdk() {

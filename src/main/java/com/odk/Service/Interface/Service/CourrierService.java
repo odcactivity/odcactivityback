@@ -2310,4 +2310,93 @@ public class CourrierService {
             historiqueRepository.save(h);
         }
     }
+
+    @Transactional
+    public Courrier emettreCourrierOdcParEmail(
+            String numero,
+            String expediteur,
+            String objet,
+            String emailDestinataire,
+            Long directionId,
+            MultipartFile fichier,
+            Utilisateur auteur
+    ) throws IOException {
+        if (objet == null || objet.isBlank()) {
+            throw new CourrierValidationException("L'objet est obligatoire.");
+        }
+        if (expediteur == null || expediteur.isBlank()) {
+            throw new CourrierValidationException("L'expéditeur est obligatoire.");
+        }
+        if (emailDestinataire == null || emailDestinataire.isBlank() || !emailDestinataire.contains("@")) {
+            throw new CourrierValidationException("Email destinataire invalide.");
+        }
+
+        Entite direction = entiteRepository.findById(directionId)
+                .orElseThrow(() -> new CourrierValidationException("Direction non trouvée"));
+
+        String cheminFichier = null;
+        if (fichier != null && !fichier.isEmpty()) {
+            try {
+                cheminFichier = sauvegarderFichierSecurise(fichier);
+            } catch (FileValidationException e) {
+                throw new CourrierValidationException("Erreur de validation du fichier : " + e.getMessage(), e);
+            }
+        }
+
+        Courrier courrier = new Courrier();
+        courrier.setNumero(numero != null && !numero.isBlank() ? numero : "ODC-" + System.currentTimeMillis());
+        courrier.setObjet(objet);
+        courrier.setExpediteur(expediteur);
+        courrier.setEntite(direction);
+        courrier.setDirectionInitial(direction);
+        courrier.setStructureOrigine(direction);
+        courrier.setFichier(cheminFichier);
+        courrier.setStatut(StatutCourrier.REPONDU);
+        courrier.setDateReception(new Date());
+        courrier.setDestinataireOdc(DestinataireCourrierOdc.EXTERNE);
+        courrier.setExternePrecision(emailDestinataire);
+        courrierRepository.save(courrier);
+
+        HistoriqueCourrier historique = new HistoriqueCourrier();
+        historique.setCourrier(courrier);
+        historique.setEntite(direction);
+        historique.setUtilisateur(auteur);
+        historique.setStatut(StatutCourrier.REPONDU);
+        historique.setCommentaire("Courrier émis directement par email à : " + emailDestinataire);
+        historique.setDateAction(new Date());
+        historique.setAncienneEntite(null);
+        historique.setNouvelleEntite(direction);
+        historiqueRepository.save(historique);
+
+        List<java.io.File> filesToAttach = new java.util.ArrayList<>();
+        if (cheminFichier != null) {
+            filesToAttach.add(new java.io.File(cheminFichier));
+        }
+
+        String emailBody = "<!DOCTYPE html><html><body>"
+                + "<div style='font-family: Arial, sans-serif; border: 2px solid #ff7900; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto;'>"
+                + "<div style='background-color: #ff7900; color: white; padding: 15px; font-size: 22px; font-weight: bold; text-align: center; border-top-left-radius: 6px; border-top-right-radius: 6px;'>"
+                + "Orange Digital Center"
+                + "</div>"
+                + "<div style='padding: 20px; background-color: #ffffff; color: #2c3e50; line-height: 1.6;'>"
+                + "<h3 style='color: #2c3e50; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;'>Envoi de courrier</h3>"
+                + "<p>Bonjour,</p>"
+                + "<p>Nous vous transmettons un courrier émis par <b>" + expediteur + "</b> de la direction <b>" + direction.getNom() + "</b>.</p>"
+                + "<div style='background-color: #f8f9fa; border-left: 4px solid #ff7900; padding: 15px; margin: 20px 0; border-radius: 4px;'>"
+                + "<p style='margin: 0; font-weight: bold; color: #2c3e50; margin-bottom: 10px;'>Objet :</p>"
+                + "<p style='margin: 0;'>" + objet + "</p>"
+                + "</div>"
+                + "<p>Veuillez trouver ci-joint le document correspondant.</p>"
+                + "<p>Cordialement,<br>L'équipe Orange Digital Center</p>"
+                + "</div>"
+                + "<hr style='border: none; border-top: 1px solid #dee2e6; margin: 20px 0;'>"
+                + "<p style='font-size: 0.8em; color: #888888; text-align: center; margin: 0;'>"
+                + "Ceci est un envoi automatique depuis la plateforme Orange Digital Center. Merci de ne pas y répondre directement."
+                + "</p>"
+                + "</div></body></html>";
+
+        emailService.sendEmailWithAttachments(emailDestinataire.trim(), objet, emailBody, filesToAttach);
+
+        return courrier;
+    }
 }
