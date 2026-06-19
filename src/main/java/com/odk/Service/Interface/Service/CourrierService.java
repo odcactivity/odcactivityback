@@ -260,6 +260,7 @@ public class CourrierService {
         InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
+                .header("Access-Control-Expose-Headers", "Content-Disposition")
                 .contentLength(fichier.length())
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
@@ -748,9 +749,11 @@ public class CourrierService {
         if (!fichier.exists()) {
             throw new CourrierValidationException("Fichier d'archive introuvable sur le serveur.");
         }
+        String nomAffichage = Paths.get(fichier.getName()).getFileName().toString();
         InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomAffichage + "\"")
+                .header("Access-Control-Expose-Headers", "Content-Disposition")
                 .contentLength(fichier.length())
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
@@ -2121,15 +2124,19 @@ public class CourrierService {
             return;
         }
         String lien = lienFrontendHash("courrier");
-        String sujet = "[ODC Courrier] À valider : " + courrier.getNumero();
-        String corps = "<p>Un nouveau courrier attend votre validation ou votre annulation.</p>"
+        String expediteur = courrier.getExpediteur() != null && !courrier.getExpediteur().isBlank()
+                ? courrier.getExpediteur().trim()
+                : "DCIRE";
+        String sujet = "[ODC Courrier] Nouveau courrier : " + courrier.getNumero();
+        String corps = "<p>Vous avez reçu un nouveau courrier.</p>"
+                + "<p><strong>Expéditeur :</strong> " + escapeHtmlCourrier(expediteur) + "</p>"
                 + "<p><strong>Objet :</strong> " + escapeHtmlCourrier(courrier.getObjet()) + "</p>"
                 + "<p><a href=\"" + lien + "\">Accéder à votre espace</a></p>";
         String html = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>";
         for (Utilisateur d : directeurs) {
             if (d.getEmail() != null && !d.getEmail().isBlank()) {
                 try {
-                    emailService.sendSimpleEmail(d.getEmail(), sujet, html);
+                    emailService.sendSimpleEmail(d.getEmail(), sujet, html, expediteur, null);
                 } catch (RuntimeException ex) {
                     log.warn("E-mail directeur ODC non envoyé (courrier id={}) : {}", courrier.getId(), ex.getMessage());
                 }

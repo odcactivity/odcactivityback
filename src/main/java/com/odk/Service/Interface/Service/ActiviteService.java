@@ -1,15 +1,18 @@
 package com.odk.Service.Interface.Service;
 
 import com.odk.Entity.Activite;
+import com.odk.Entity.ActiviteValidation;
 import com.odk.Entity.Entite;
 import com.odk.Entity.Etape;
 import com.odk.Entity.Salle;
 import com.odk.Entity.Utilisateur;
 import com.odk.Enum.TypeEntite;
-import com.odk.Repository.EntiteOdcRepository;
+import com.odk.Repository.ActiviteValidationRepository;
 import com.odk.Enum.DecisionDirecteurOdc;
 import com.odk.Enum.Statut;
+import com.odk.Enum.StatutValidation;
 import com.odk.Repository.ActiviteRepository;
+import com.odk.Repository.EntiteOdcRepository;
 import com.odk.Repository.EtapeRepository;
 import com.odk.Repository.SalleRepository;
 import com.odk.Repository.UtilisateurRepository;
@@ -35,7 +38,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,7 +71,7 @@ public class ActiviteService implements CrudService<Activite, Long> {
     private final EtapeRepository etapeRepository;
     private final ActiviteMapper activiteMapper;
     private final EtapeMapper etapeMapper;
-     
+    private final ActiviteValidationRepository activiteValidationRepository;
 
     @Override
     public Activite add(Activite entity) {
@@ -217,7 +222,7 @@ public void envoiMail(Activite activiteCree){
                 responsables = utilisateurRepository.findByRole_Nom(ResponsableEntiteSupport.ROLE_ODK);
             }
             if (responsables == null || responsables.isEmpty()) {
-                envoiMailDirecteurOdcPourActivite(activiteCree);
+                log.warn("Aucun responsable {} pour notifier l'activité id={}", roleCible, activiteCree.getId());
                 return;
             }
         }
@@ -231,10 +236,12 @@ public void envoiMail(Activite activiteCree){
                 + "</strong>. Merci de vérifier la salle et la logistique avant transmission au directeur ODC.</p>"
                 + "<p><a href=\"" + lien + "\">Tableau de bord " + escapeHtml(libelle) + "</a></p>";
         String sujet = "[ODC Activité] À traiter (" + libelle + ") : " + activiteCree.getNom();
+        String replyTo = activiteCree.getCreatedBy() != null ? activiteCree.getCreatedBy().getEmail() : null;
         for (Utilisateur r : responsables) {
             if (r.getEmail() != null && !r.getEmail().isBlank()) {
                 emailService.sendSimpleEmail(r.getEmail(), sujet,
-                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>",
+                        createur, replyTo);
             }
         }
     }
@@ -303,7 +310,7 @@ public void envoiMail(Activite activiteCree){
         a.setStatut(Statut.En_Validation_Directeur_ODC);
         a.setTransmiseDirecteurOdcLe(new Date());
         Activite saved = activiteRepository.save(a);
-        envoiMailDirecteurOdcPourActivite(saved);
+        envoiMailDirecteurOdcPourActivite(saved, responsable);
         return saved;
     }
 
@@ -449,6 +456,10 @@ public void envoiMail(Activite activiteCree){
     }
 
     public void envoiMailDirecteurOdcPourActivite(Activite activiteCree) {
+        envoiMailDirecteurOdcPourActivite(activiteCree, null);
+    }
+
+    public void envoiMailDirecteurOdcPourActivite(Activite activiteCree, Utilisateur expediteurResponsable) {
         List<Utilisateur> directeurs = utilisateurRepository.findByRole_Nom("DIRECTEUR_ODC");
         if (directeurs == null || directeurs.isEmpty()) {
             return;
@@ -456,21 +467,22 @@ public void envoiMail(Activite activiteCree){
         String createur = activiteCree.getCreatedBy() != null
                 ? activiteCree.getCreatedBy().getPrenom() + " " + activiteCree.getCreatedBy().getNom()
                 : "un personnel";
-        String lienConnexion = buildFrontendUrl("/authentication/signin");
         String lienValidation = buildFrontendUrl(directeurValidationActivitesPath);
-        String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(createur)
-                + "</strong> a créé une activité <strong>" + escapeHtml(activiteCree.getNom())
-                + "</strong> en attente de votre validation.</p>"
-                + "<p>Connectez-vous en directeur ODC, puis ouvrez la page de validation : "
-                + "<a href=\"" + lienConnexion + "\">Connexion</a></p>"
-                + "<p>Raccourci vers la liste à traiter : <a href=\"" + lienValidation + "\">"
-                + lienValidation + "</a> (après connexion).</p>"
-                + "<p>Vous pourrez valider ou refuser depuis le tableau de bord.</p>";
-        String sujet = "[ODC Activité] Validation requise : " + activiteCree.getNom();
+        String responsableNom = expediteurResponsable != null
+                ? (expediteurResponsable.getPrenom() + " " + expediteurResponsable.getNom()).trim()
+                : "Le responsable de l'entité";
+        String corps = "<p>Bonjour,</p><p><strong>" + escapeHtml(responsableNom)
+                + "</strong> vous transmet l'activité <strong>" + escapeHtml(activiteCree.getNom())
+                + "</strong> (créée par " + escapeHtml(createur) + ") pour validation finale.</p>"
+                + "<p><a href=\"" + lienValidation + "\">Ouvrir la validation directeur ODC</a></p>";
+        String sujet = "[ODC Activité] Transmission responsable : " + activiteCree.getNom();
+        String expediteurLibelle = responsableNom;
+        String replyTo = expediteurResponsable != null ? expediteurResponsable.getEmail() : null;
         for (Utilisateur d : directeurs) {
             if (d.getEmail() != null && !d.getEmail().isBlank()) {
                 emailService.sendSimpleEmail(d.getEmail(), sujet,
-                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>");
+                        "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif\">" + corps + "</body></html>",
+                        expediteurLibelle, replyTo);
             }
         }
     }
@@ -490,6 +502,37 @@ public void envoiMail(Activite activiteCree){
             return "";
         }
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    /** Personnel : remplace ou crée la pièce jointe après correction (retour responsable). */
+    @Transactional
+    public void remplacerPieceJointePersonnel(Long activiteId, MultipartFile fichier) throws IOException {
+        if (fichier == null || fichier.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fichier requis.");
+        }
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Utilisateur utilisateur = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Utilisateur introuvable."));
+        Activite activite = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable."));
+        assertPersonnelEstCreateurEtPeutModifier(activite, utilisateur);
+
+        List<ActiviteValidation> validations = activiteValidationRepository.findByActiviteId(activiteId);
+        ActiviteValidation validation;
+        if (validations == null || validations.isEmpty()) {
+            validation = new ActiviteValidation();
+            validation.setActivite(activite);
+            validation.setEnvoyeurId(utilisateur.getId());
+            validation.setCommentaire("Pièce jointe — correction après retour responsable");
+            validation.setStatut(StatutValidation.En_Attente);
+            validation.setDate(new Date());
+        } else {
+            validation = validations.get(validations.size() - 1);
+        }
+        validation.setFichierChiffre(fichier.getBytes());
+        validation.setFichierjoint(fichier.getOriginalFilename());
+        validation.setDate(new Date());
+        activiteValidationRepository.save(validation);
     }
 
     @Transactional

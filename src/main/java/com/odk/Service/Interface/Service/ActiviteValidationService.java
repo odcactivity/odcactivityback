@@ -4,7 +4,9 @@
  */
 package com.odk.Service.Interface.Service;
 
+import com.odk.Entity.Activite;
 import com.odk.Entity.ActiviteValidation;
+import com.odk.Entity.Utilisateur;
 import com.odk.Repository.ActiviteRepository;
 import com.odk.Repository.ActiviteValidationRepository;
 import com.odk.Repository.UtilisateurRepository;
@@ -12,12 +14,17 @@ import com.odk.Service.Interface.CrudService;
 import com.odk.dto.ActiviteValidationDTO;
 import com.odk.dto.ActiviteValidationMapper;
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  *
@@ -95,6 +102,48 @@ public class ActiviteValidationService{
                 .orElseThrow(() -> new RuntimeException("Validation non trouvée"));
 
         return validation.getFichierjoint();
+    }
+
+    /** Remplace la pièce jointe d'une validation (correction personnel après retour responsable). */
+    @Transactional
+    public ActiviteValidationDTO mettreAJourFichier(Long validationId, MultipartFile fichier, Utilisateur utilisateur)
+            throws IOException {
+        ActiviteValidation validation = validationRepository.findById(validationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Validation introuvable"));
+
+        Long activiteId = null;
+        if (validation.getActivite() != null) {
+            activiteId = validation.getActivite().getId();
+        }
+        if (activiteId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Aucune activité associée à cette pièce jointe.");
+        }
+
+        Activite activite = activiteRepository.findById(activiteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable"));
+
+        if (activite.getCreatedBy() == null || utilisateur == null || utilisateur.getId() == null
+                || !Objects.equals(activite.getCreatedBy().getId(), utilisateur.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Vous ne pouvez modifier que les pièces jointes de vos propres activités.");
+        }
+        if (fichier == null || fichier.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fichier requis.");
+        }
+
+        validation.setFichierChiffre(fichier.getBytes());
+        validation.setFichierjoint(fichier.getOriginalFilename());
+        validation.setDate(new Date());
+        ActiviteValidation saved = validationRepository.save(validation);
+
+        ActiviteValidationDTO dto = new ActiviteValidationDTO();
+        dto.setId(saved.getId());
+        dto.setActiviteId(activiteId);
+        dto.setFichierjoint(saved.getFichierjoint());
+        dto.setCommentaire(saved.getCommentaire());
+        dto.setDate(saved.getDate());
+        dto.setEnvoyeurId(saved.getEnvoyeurId());
+        return dto;
     }
 
 }

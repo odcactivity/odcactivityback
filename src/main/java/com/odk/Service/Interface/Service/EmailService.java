@@ -2,41 +2,79 @@ package com.odk.Service.Interface.Service;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
-import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
-@AllArgsConstructor
 public class EmailService {
 
-    private JavaMailSender mailSender;
-    public void sendSimpleEmail(String to, String subject, String body) {
-        // Crée un objet MimeMessage pour gérer l'envoi d'un email plus sophistiqué (HTML).
-        MimeMessage mimeMessage = mailSender.createMimeMessage();
+    private final JavaMailSender mailSender;
 
-        try {
-            // Utilise MimeMessageHelper pour construire l'e-mail avec prise en charge de HTML.
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true);
-            helper.setTo(to);  // Définit le destinataire.
-            helper.setSubject(subject);  // Définit l'objet de l'e-mail.
-            helper.setText(body, true);  // Le paramètre 'true' indique que le corps est en HTML.
+    @Value("${spring.mail.username}")
+    private String defaultFromEmail;
 
-            // Envoie l'e-mail.
-            mailSender.send(mimeMessage);
-        } catch (MessagingException e) {
-            // En cas d'erreur, une RuntimeException est levée.
-            throw new RuntimeException("Échec de l'envoi de l'email", e);
-        }
+    public EmailService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
     }
-    public void sendEmailWithAttachments(String to, String subject, String body, java.util.List<java.io.File> files) {
+
+    public void sendSimpleEmail(String to, String subject, String body) {
+        sendSimpleEmail(to, subject, body, null, null);
+    }
+
+    /**
+     * @param expediteurLibelle nom affiché (ex. KEÏTA DCIRE, Responsable Multimedia)
+     * @param replyToEmail      adresse de réponse (ex. email du responsable connecté)
+     */
+    public void sendSimpleEmail(String to, String subject, String body,
+                                String expediteurLibelle, String replyToEmail) {
         MimeMessage mimeMessage = mailSender.createMimeMessage();
         try {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(body, true);
+            String from = defaultFromEmail != null && !defaultFromEmail.isBlank()
+                    ? defaultFromEmail.trim()
+                    : "noreply@odc.local";
+            if (expediteurLibelle != null && !expediteurLibelle.isBlank()) {
+                helper.setFrom(from, expediteurLibelle.trim());
+            } else {
+                helper.setFrom(from);
+            }
+            if (replyToEmail != null && replyToEmail.contains("@")) {
+                helper.setReplyTo(replyToEmail.trim());
+            }
+            mailSender.send(mimeMessage);
+        } catch (MessagingException | java.io.UnsupportedEncodingException e) {
+            throw new RuntimeException("Échec de l'envoi de l'email", e);
+        }
+    }
+
+    public void sendEmailWithAttachments(String to, String subject, String body, java.util.List<java.io.File> files) {
+        sendEmailWithAttachments(to, subject, body, files, null, null);
+    }
+
+    public void sendEmailWithAttachments(String to, String subject, String body, java.util.List<java.io.File> files,
+                                         String expediteurLibelle, String replyToEmail) {
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        try {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(body, true);
+            String from = defaultFromEmail != null && !defaultFromEmail.isBlank()
+                    ? defaultFromEmail.trim()
+                    : "noreply@odc.local";
+            if (expediteurLibelle != null && !expediteurLibelle.isBlank()) {
+                helper.setFrom(from, expediteurLibelle.trim());
+            } else {
+                helper.setFrom(from);
+            }
+            if (replyToEmail != null && replyToEmail.contains("@")) {
+                helper.setReplyTo(replyToEmail.trim());
+            }
             if (files != null) {
                 for (java.io.File file : files) {
                     if (file != null && file.exists()) {
@@ -45,7 +83,7 @@ public class EmailService {
                 }
             }
             mailSender.send(mimeMessage);
-        } catch (MessagingException e) {
+        } catch (MessagingException | java.io.UnsupportedEncodingException e) {
             throw new RuntimeException("Échec de l'envoi de l'email avec pièces jointes", e);
         }
     }

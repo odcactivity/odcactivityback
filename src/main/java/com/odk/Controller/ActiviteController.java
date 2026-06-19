@@ -15,12 +15,15 @@ import com.odk.dto.EtapeMapper;
 import com.odk.dto.ParticipantDTO;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 @RestController
@@ -217,6 +220,17 @@ public class ActiviteController {
         System.out.println("dans modifierP++++++++++"+listeEtape);
 //            return activiteService.update(activite, id);
             return activiteService.updateDTO(activite,listeEtape, id);
+    }
+
+    @PostMapping(value = "/{id}/piece-jointe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('PERSONNEL')")
+    public ResponseEntity<Map<String, String>> remplacerPieceJointe(
+            @PathVariable Long id,
+            @RequestParam("fichier") MultipartFile fichier) throws IOException {
+        activiteService.remplacerPieceJointePersonnel(id, fichier);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Pièce jointe mise à jour.");
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")

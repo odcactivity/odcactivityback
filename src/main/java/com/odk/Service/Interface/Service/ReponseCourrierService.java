@@ -145,7 +145,13 @@ public class ReponseCourrierService {
                     + "</p>"
                     + "</div></body></html>";
             
-            emailService.sendEmailWithAttachments(dto.getEmailDestinataire().trim(), dto.getObjet(), emailBody, filesToAttach);
+            emailService.sendEmailWithAttachments(
+                    dto.getEmailDestinataire().trim(),
+                    dto.getObjet(),
+                    emailBody,
+                    filesToAttach,
+                    dto.getEmail() != null ? dto.getEmail().trim() : null,
+                    dto.getEmail());
             
             com.odk.Entity.HistoriqueCourrier historiqueHC = new com.odk.Entity.HistoriqueCourrier();
             historiqueHC.setCourrier(courrier);

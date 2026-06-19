@@ -646,7 +646,7 @@ public class CourrierController {
     }
 
     @PostMapping(value = "/{id}/fichier-archive", consumes = "multipart/form-data")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','DCIRE')")
     public ResponseEntity<Void> uploadFichierArchive(
             @PathVariable Long id,
             @RequestParam MultipartFile fichierArchive,
@@ -657,7 +657,7 @@ public class CourrierController {
     }
 
     @GetMapping("/{id}/fichier-archive")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','RESPONSABLE_ODK','RESPONSABLE_FABLAB','RESPONSABLE_OFAB','RESPONSABLE_MULTIMEDIA')")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','ADMIN','DIRECTEUR','DIRECTEUR_ODC','DCIRE','RESPONSABLE_ODK','RESPONSABLE_FABLAB','RESPONSABLE_OFAB','RESPONSABLE_MULTIMEDIA')")
     public ResponseEntity<InputStreamResource> telechargerFichierArchiveGeneral(
             @PathVariable Long id) throws IOException {
         return courrierService.telechargerFichierArchive(id);
