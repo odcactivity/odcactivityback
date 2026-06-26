@@ -517,22 +517,63 @@ public void envoiMail(Activite activiteCree){
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activité introuvable."));
         assertPersonnelEstCreateurEtPeutModifier(activite, utilisateur);
 
-        List<ActiviteValidation> validations = activiteValidationRepository.findByActiviteId(activiteId);
-        ActiviteValidation validation;
+        List<ActiviteValidation> validations =
+                activiteValidationRepository.findByActiviteIdOrderByIdDesc(activiteId);
+        ActiviteValidation validation = resoudreValidationPieceJointeActivite(activite, utilisateur, validations);
+
+        byte[] contenu = fichier.getBytes();
+        String nomFichier = fichier.getOriginalFilename();
+        Date now = new Date();
+        validation.setFichierChiffre(contenu);
+        validation.setFichierjoint(nomFichier);
+        validation.setDate(now);
+        ActiviteValidation saved = activiteValidationRepository.save(validation);
+        retirerFichiersPieceJointeDoublons(saved, validations);
+    }
+
+    /** Pièce jointe canonique : la plus récente qui porte déjà un fichier, sinon la plus récente, sinon nouvelle entrée. */
+    private ActiviteValidation resoudreValidationPieceJointeActivite(
+            Activite activite,
+            Utilisateur utilisateur,
+            List<ActiviteValidation> validations) {
         if (validations == null || validations.isEmpty()) {
-            validation = new ActiviteValidation();
+            ActiviteValidation validation = new ActiviteValidation();
             validation.setActivite(activite);
             validation.setEnvoyeurId(utilisateur.getId());
             validation.setCommentaire("Pièce jointe — correction après retour responsable");
             validation.setStatut(StatutValidation.En_Attente);
             validation.setDate(new Date());
-        } else {
-            validation = validations.get(validations.size() - 1);
+            return validation;
         }
-        validation.setFichierChiffre(fichier.getBytes());
-        validation.setFichierjoint(fichier.getOriginalFilename());
-        validation.setDate(new Date());
-        activiteValidationRepository.save(validation);
+        return validations.stream()
+                .filter(v -> v.getFichierjoint() != null && !v.getFichierjoint().isBlank())
+                .findFirst()
+                .orElse(validations.get(0));
+    }
+
+    /** Évite que le responsable télécharge encore une ancienne pièce jointe dupliquée. */
+    private void retirerFichiersPieceJointeDoublons(
+            ActiviteValidation canonique,
+            List<ActiviteValidation> validations) {
+        if (canonique == null || validations == null || validations.isEmpty()) {
+            return;
+        }
+        Long keepId = canonique.getId();
+        if (keepId == null) {
+            return;
+        }
+        for (ActiviteValidation v : validations) {
+            if (keepId.equals(v.getId())) {
+                continue;
+            }
+            boolean porteFichier = (v.getFichierjoint() != null && !v.getFichierjoint().isBlank())
+                    || (v.getFichierChiffre() != null && v.getFichierChiffre().length > 0);
+            if (porteFichier) {
+                v.setFichierChiffre(null);
+                v.setFichierjoint(null);
+                activiteValidationRepository.save(v);
+            }
+        }
     }
 
     @Transactional

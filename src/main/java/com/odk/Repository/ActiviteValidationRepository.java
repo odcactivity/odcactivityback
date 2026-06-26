@@ -23,7 +23,10 @@ public interface ActiviteValidationRepository extends JpaRepository<ActiviteVali
     @Query("SELECT a.id FROM ActiviteValidation a")
     List<Long> findAllQuery();
     List<ActiviteValidation> findAll();
-    @Query("SELECT a FROM ActiviteValidation a WHERE a.activite.id=:activite")
+    @Query("SELECT a FROM ActiviteValidation a WHERE a.activite.id=:activite ORDER BY a.id DESC")
     List<ActiviteValidation> findByActiviteId(@Param("activite")Long activite);
+
+    @Query("SELECT a FROM ActiviteValidation a WHERE a.activite.id=:activiteId ORDER BY a.id DESC")
+    List<ActiviteValidation> findByActiviteIdOrderByIdDesc(@Param("activiteId") Long activiteId);
 //    List<ActiviteValidation> findByActiviteById(Long activite);
 }
