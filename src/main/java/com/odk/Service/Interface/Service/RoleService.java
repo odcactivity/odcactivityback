@@ -1,6 +1,7 @@
 package com.odk.Service.Interface.Service;
 
 import com.odk.Entity.Role;
+import com.odk.Entity.Utilisateur;
 import com.odk.Repository.RoleRepository;
 import com.odk.Service.Interface.CrudService;
 import lombok.AllArgsConstructor;
@@ -17,6 +18,9 @@ public class RoleService implements CrudService<Role, Long> {
 
     @Override
     public Role add(Role role) {
+        if (role.getNom() != null) {
+            role.setNom(Utilisateur.normalizeRoleName(role.getNom()));
+        }
         return roleRepository.save(role);
     }
 
@@ -35,8 +39,9 @@ public class RoleService implements CrudService<Role, Long> {
         Optional<Role> optionalRole = roleRepository.findById(id);
         if (optionalRole.isPresent()) {
             Role existingRole = optionalRole.get();
-            // Mise à jour des champs spécifiques
-            existingRole.setNom(role.getNom());
+            if (role.getNom() != null && !role.getNom().isBlank()) {
+                existingRole.setNom(Utilisateur.normalizeRoleName(role.getNom()));
+            }
             return roleRepository.save(existingRole);
         }
         return null;

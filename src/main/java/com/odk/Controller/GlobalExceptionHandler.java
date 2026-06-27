@@ -3,12 +3,23 @@ package com.odk.Controller;
 import com.odk.Entity.ResponseMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ResponseMessage> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(new ResponseMessage(
+                        "Accès refusé : votre rôle n'a pas la permission pour cette action. "
+                                + "Vérifiez que le nom du rôle en base correspond aux rôles système "
+                                + "(ex. DIRECTEUR_ODC, PERSONNEL) et reconnectez-vous après modification."));
+    }
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<?> handleResponseStatusException(ResponseStatusException ex) {

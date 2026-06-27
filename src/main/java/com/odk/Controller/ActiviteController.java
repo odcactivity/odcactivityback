@@ -59,7 +59,7 @@ public class ActiviteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
             + "or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') "
             + "or hasRole('RESPONSABLE_MULTIMEDIA')")
     @ResponseStatus(HttpStatus.OK)
@@ -83,7 +83,7 @@ public class ActiviteController {
     }
 
     @GetMapping("/calendrier")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') "
             + "or hasRole('RESPONSABLE_ODK') or hasRole('RESPONSABLE_FABLAB') or hasRole('RESPONSABLE_OFAB') "
             + "or hasRole('RESPONSABLE_MULTIMEDIA')")
     public List<ActiviteDTO> listerPourCalendrier() {
@@ -124,7 +124,7 @@ public class ActiviteController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     @ResponseStatus(HttpStatus.OK)
     public ActiviteDTO getActiviteParId(@PathVariable Long id) {
         try {
@@ -247,7 +247,7 @@ public class ActiviteController {
 
 
     @GetMapping("/enCours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public List<ActiviteDTO> listerActiviteEncours() {
         return activiteService.List().stream()
                 .map(activite -> {
@@ -294,14 +294,14 @@ public class ActiviteController {
     }
 
     @GetMapping("/nombre") // Pas de paramètres
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivite() {
         long count = activiteRepository.count();
         return ResponseEntity.ok(count); // Retourne le nombre d'utilisateurs
     }
 
     @GetMapping("/nombreActivitesEncours")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEncours() {
         long count = activiteRepository.countByStatutIn(
                 Arrays.asList(Statut.En_Cours, Statut.En_Attente));
@@ -309,14 +309,14 @@ public class ActiviteController {
     }
 
     @GetMapping("/nombreActivitesEnAttente")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesEnAttente() {
         long count = activiteRepository.countByStatut(Statut.En_Validation_Directeur_ODC);
         return ResponseEntity.ok(count);
     }
 
     @GetMapping("/nombreActivitesTerminer")
-    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('PERSONNEL') or hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
     public ResponseEntity<Long> getNombreActivitesTerminer() {
         long count = activiteRepository.countByStatut(Statut.Termine); // Compte les activités avec statut "En_Cours"
         return ResponseEntity.ok(count); // Retourne le nombre d'activités

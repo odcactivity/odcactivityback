@@ -13,6 +13,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 @Entity
 @Inheritance(strategy = InheritanceType.JOINED)
@@ -61,19 +62,33 @@ public class Utilisateur implements UserDetails {
             return Collections.emptyList();
         }
 
-        String roleName = this.role.getNom().trim().toUpperCase();
+        String roleName = normalizeRoleName(this.role.getNom());
         List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
         grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_" + roleName));
 
-        // Compatibilite: certains comptes ont ete renommes ADMIN au lieu de SUPERADMIN.
-        // On accorde les deux autorites pour eviter les Access Denied.
+        // Compatibilité ADMIN ↔ SUPERADMIN
         if ("ADMIN".equals(roleName)) {
             grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_SUPERADMIN"));
         } else if ("SUPERADMIN".equals(roleName)) {
             grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
         }
 
+        // Alias métier (API @PreAuthorize utilise parfois DCIRE, parfois DIRECTEUR)
+        if ("DIRECTEUR".equals(roleName)) {
+            grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_DCIRE"));
+        } else if ("DCIRE".equals(roleName)) {
+            grantedAuthorities.add(new SimpleGrantedAuthority("ROLE_DIRECTEUR"));
+        }
+
         return grantedAuthorities;
+    }
+
+    /** Nom de rôle stable pour Spring Security (MAJUSCULES + underscores). */
+    public static String normalizeRoleName(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw.trim().toUpperCase(Locale.ROOT).replaceAll("[\\s-]+", "_");
     }
 
     @Override
