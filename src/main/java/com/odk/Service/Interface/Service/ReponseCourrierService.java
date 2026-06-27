@@ -48,11 +48,16 @@ public class ReponseCourrierService {
         // Validation des données obligatoires
         validerReponseCourrier(dto);
 
+        if (auteur == null && dto.getEmail() != null && !dto.getEmail().isBlank()) {
+            auteur = utilisateurRepository.findByEmail(dto.getEmail().trim()).orElse(null);
+        }
+
         // Récupération du courrier
         Courrier courrier = courrierRepository.findById(dto.getCourrierId())
                 .orElseThrow(() -> new CourrierValidationException("Courrier non trouvé"));
 
-        boolean fluxOdcDirecteur = courrierService.requiertValidationReponseDirecteurOdc(courrier);
+        boolean fluxOdcDirecteur = courrier.isDelegueResponsableOdk()
+                || courrierService.requiertValidationReponseDirecteurOdc(courrier);
         boolean estDirecteurOdc = false;
         if (auteur != null && auteur.getRole() != null) {
             String role = auteur.getRole().getNom() != null ? auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT) : "";
@@ -63,6 +68,9 @@ public class ReponseCourrierService {
 
         if (fluxOdcDirecteur) {
             verifierDirecteurOuResponsableOdc(auteur);
+            if (courrier.isDelegueResponsableOdk()) {
+                verifierResponsablePeutRepondreCourrierDelegue(courrier, auteur);
+            }
         } else if (courrierService.estCourrierRecuAuHubDcire(courrier)) {
             verifierPeutRepondreDcireHub(auteur);
         } else if (auteur != null && auteur.getRole() != null) {
@@ -174,6 +182,24 @@ public class ReponseCourrierService {
             log.info("Réponse enregistrée pour le courrier {} par {}", courrier.getId(), dto.getEmail());
         }
         return savedReponse;
+    }
+
+    private void verifierResponsablePeutRepondreCourrierDelegue(Courrier courrier, Utilisateur auteur) {
+        if (auteur == null || auteur.getRole() == null) {
+            throw new CourrierValidationException("Profil non autorisé à répondre à ce courrier délégué.");
+        }
+        String role = auteur.getRole().getNom() != null
+                ? auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT)
+                : "";
+        if ("DIRECTEUR_ODC".equals(role)) {
+            return;
+        }
+        if (!ResponsableEntiteSupport.estRoleResponsableEntite(role)) {
+            throw new CourrierValidationException("Seul le responsable ODK peut répondre à ce courrier délégué.");
+        }
+        if (!ResponsableEntiteSupport.courrierVisiblePourResponsable(courrier, auteur, List.of())) {
+            throw new CourrierValidationException("Ce courrier ne vous est pas affecté.");
+        }
     }
 
     private void verifierDirecteurOuResponsableOdc(Utilisateur auteur) {

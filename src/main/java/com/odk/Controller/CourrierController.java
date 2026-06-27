@@ -82,7 +82,7 @@ public class CourrierController {
      *  PARTIE 1 : RÉCEPTION / ENREGISTREMENT DU COURRIER
      * ====================================================== */
     @PostMapping("/reception")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI') or hasRole('DIRECTEUR_FONDATION')")
     public ResponseEntity<Courrier> receptionCourrier(
             @RequestParam String numero,
             @RequestParam String objet,
@@ -106,7 +106,7 @@ public class CourrierController {
      *  PARTIE 2 : IMPUTATION PAR LE DIRECTEUR
      * ====================================================== */
     @GetMapping("/odc/directions-emission")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR') or hasRole('DIRECTEUR_ODC') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI') or hasRole('DIRECTEUR_FONDATION')")
     public ResponseEntity<List<EntiteDTO>> listerDirectionsEmissionOdc() {
         List<Entite> dirs = courrierService.listerDirectionsOdcPourBrouillon();
         return ResponseEntity.ok(
@@ -212,6 +212,16 @@ public class CourrierController {
         return ResponseEntity.ok(courrierService.accuserReceptionOperationnelle(id, utilisateur));
     }
 
+    @PostMapping("/structure-directeur/{id}/deleguer-email")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> deleguerEmailStructure(
+            @PathVariable Long id,
+            @RequestParam String email,
+            @RequestParam(required = false) String note,
+            @AuthenticationPrincipal Utilisateur utilisateur) {
+        return ResponseEntity.ok(courrierService.deleguerCourrierEmailParDirecteurStructure(id, email, note, utilisateur));
+    }
+
     @PostMapping("/structure-directeur/courrier-interne")
     @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
     public ResponseEntity<Courrier> courrierInterneDepuisStructure(
@@ -281,7 +291,7 @@ public class CourrierController {
     }
 
     @GetMapping("/odc/{directionId}")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('ADMIN') or hasRole('DIRECTEUR_ODC') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI') or hasRole('DIRECTEUR_FONDATION')")
     public ResponseEntity<List<Courrier>> listerPourOdc(
             @PathVariable Long directionId,
             @RequestParam(defaultValue = "OPERATIONNEL") String vue
@@ -329,7 +339,7 @@ public class CourrierController {
     }
 
     @PostMapping("/odc/emission-email")
-    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR_ODC')")
+    @PreAuthorize("hasRole('SUPERADMIN') or hasRole('DIRECTEUR_ODC') or hasRole('DIRECTEUR_RSE') or hasRole('DIRECTEUR_DCI') or hasRole('DIRECTEUR_FONDATION')")
     public ResponseEntity<Courrier> emettreCourrierOdcParEmail(
             @RequestParam(required = false) String numero,
             @RequestParam String expediteur,
@@ -595,14 +605,8 @@ public class CourrierController {
         dto.setFile(file);
         dto.setAttachments(attachments);
 
-        try {
-            ReponseCourrier reponse = reponseCourrierService.repondreCourrier(dto, utilisateur);
-            return ResponseEntity.ok(reponse);
-        } catch (CourrierValidationException e) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body(null);
-        }
+        ReponseCourrier reponse = reponseCourrierService.repondreCourrier(dto, utilisateur);
+        return ResponseEntity.ok(reponse);
     }
 
     @GetMapping("/{courrierId}/reponses")

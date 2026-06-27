@@ -637,7 +637,7 @@ public void envoiMail(Activite activiteCree){
 
     @Override
     public List<Activite> List() {
-        return activiteRepository.findAll();
+        return activiteRepository.findAllByOrderByDateDebutDescIdDesc();
     }
     //Par user
     public List<Activite> ListByUser(Long userId) {

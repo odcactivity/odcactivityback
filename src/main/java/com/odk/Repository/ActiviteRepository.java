@@ -18,6 +18,8 @@ public interface ActiviteRepository extends JpaRepository<Activite, Long> {
     Optional<Activite> findByNomIgnoreCase(String nom);
     long count();
 
+    List<Activite> findAllByOrderByDateDebutDescIdDesc();
+
     @Query("SELECT COUNT(DISTINCT e.activite) FROM Etape e WHERE e.statut = :statut")
     long countActivitesByStatut(@Param("statut") Statut statut);
 

@@ -423,12 +423,35 @@ public class CourrierService {
                     .filter(c -> c != null && c.getDestinataireOdc() == DestinataireCourrierOdc.EXTERNE)
                     .toList();
         }
+        List<Courrier> filtered = base.stream()
+                .filter(c -> !estEmissionEmailDirectOdc(c))
+                .toList();
         if (entiteId == null) {
-            return base;
+            return filtered;
         }
-        return base.stream()
+        return filtered.stream()
                 .filter(c -> courrierConcerneEntiteOuDescendants(c, entiteId))
                 .toList();
+    }
+
+    /**
+     * Courrier émis par le directeur ODC vers un email externe (hors circuit DCIRE).
+     * Ne doit pas apparaître sur le dashboard DCIRE.
+     */
+    private boolean estEmissionEmailDirectOdc(Courrier c) {
+        if (c == null || c.getDestinataireOdc() != DestinataireCourrierOdc.EXTERNE) {
+            return false;
+        }
+        String precision = c.getExternePrecision();
+        if (precision == null || !precision.contains("@")) {
+            return false;
+        }
+        if (precision.toLowerCase(Locale.ROOT).startsWith("délégué par e-mail")) {
+            return false;
+        }
+        return c.getStatut() == StatutCourrier.REPONDU
+                && c.getStructureOrigine() != null
+                && estDirectionOdc(c.getStructureOrigine());
     }
 
     private boolean courrierConcerneEntiteOuDescendants(Courrier c, Long entiteId) {
@@ -997,6 +1020,57 @@ public class CourrierService {
                 "Délégué au responsable ODK (préparation hors application)"
                         + (note != null && !note.isBlank() ? " — " + note.trim() : ""));
         notifierResponsablesOdkNouveauCourrier(courrier);
+        return courrier;
+    }
+
+    @Transactional
+    public Courrier deleguerCourrierEmailParDirecteurStructure(Long courrierId, String email, String note, Utilisateur u) {
+        Courrier courrier = getCourrier(courrierId);
+        if (courrier.getStatut() != StatutCourrier.ENVOYER && courrier.getStatut() != StatutCourrier.IMPUTER && courrier.getStatut() != StatutCourrier.EN_COURS) {
+            throw new CourrierValidationException("Ce courrier ne peut pas être délégué.");
+        }
+        
+        courrier.setStatut(StatutCourrier.IMPUTER);
+        if (note != null && !note.isBlank()) {
+            courrier.setNoteResponsableOdk(note.trim());
+        }
+        
+        courrier.setExternePrecision("Délégué par e-mail à: " + email.trim());
+        courrierRepository.save(courrier);
+        
+        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.IMPUTER,
+                "Courrier délégué par e-mail à : " + email.trim() + (note != null && !note.isBlank() ? " — Note : " + note.trim() : ""));
+                
+        try {
+            String sujet = "Délégation de courrier: " + courrier.getObjet();
+            StringBuilder corps = new StringBuilder();
+            corps.append("Bonjour,<br/><br/>");
+            corps.append("Le directeur de la structure <strong>").append(u.getPrenom() != null ? u.getPrenom() : "Direction").append("</strong> vous a délégué le courrier suivant :<br/><br/>");
+            corps.append("<ul>");
+            corps.append("<li><strong>Numéro :</strong> ").append(courrier.getNumero()).append("</li>");
+            corps.append("<li><strong>Objet :</strong> ").append(courrier.getObjet()).append("</li>");
+            corps.append("<li><strong>Expéditeur :</strong> ").append(courrier.getExpediteur()).append("</li>");
+            corps.append("</ul>");
+            if (note != null && !note.isBlank()) {
+                corps.append("<br/><strong>Note du directeur :</strong><br/>");
+                corps.append("<p style='white-space: pre-wrap;'>").append(note.trim()).append("</p>");
+            }
+            corps.append("<br/><br/>Cordialement,<br/>L'application ODC Activité.");
+            
+            if (courrier.getFichier() != null && !courrier.getFichier().isBlank()) {
+                java.io.File file = new java.io.File("images/" + courrier.getFichier());
+                if (file.exists()) {
+                    emailService.sendEmailWithAttachments(email.trim(), sujet, corps.toString(), java.util.List.of(file), u.getPrenom(), u.getEmail());
+                } else {
+                    emailService.sendSimpleEmail(email.trim(), sujet, corps.toString(), u.getPrenom(), u.getEmail());
+                }
+            } else {
+                emailService.sendSimpleEmail(email.trim(), sujet, corps.toString(), u.getPrenom(), u.getEmail());
+            }
+        } catch (Exception e) {
+            System.err.println("Échec de l'envoi de l'email de délégation: " + e.getMessage());
+        }
+        
         return courrier;
     }
 
@@ -2402,7 +2476,16 @@ public class CourrierService {
                 + "</p>"
                 + "</div></body></html>";
 
-        emailService.sendEmailWithAttachments(emailDestinataire.trim(), objet, emailBody, filesToAttach);
+        String replyTo = auteur != null && auteur.getEmail() != null && auteur.getEmail().contains("@")
+                ? auteur.getEmail().trim()
+                : null;
+        emailService.sendEmailWithAttachments(
+                emailDestinataire.trim(),
+                objet,
+                emailBody,
+                filesToAttach,
+                expediteur.trim(),
+                replyTo);
 
         return courrier;
     }
