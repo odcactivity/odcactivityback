@@ -1,5 +1,6 @@
 package com.odk.Service.Interface.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -75,6 +76,7 @@ public class CourrierService {
     private final ReponseCourrierRepository reponseCourrierRepository;
     private final EmailService emailService;
     private final UtilisateurRepository utilisateurRepository;
+    private final UploadFileService uploadFileService;
     private final String uploadDir = "uploads/courriers";
 
     /* ======================================================
@@ -236,34 +238,71 @@ public class CourrierService {
     public ResponseEntity<InputStreamResource> ouvrirCourrier(Long courrierId, Utilisateur utilisateur) throws IOException {
         Courrier courrier = getCourrier(courrierId);
 
-        File fichier = new File(courrier.getFichier());
-        if(!fichier.exists()) throw new RuntimeException("Fichier non trouvé");
+        File fichier = resolveCourrierFichier(courrier.getFichier());
+        if (fichier != null && fichier.exists() && fichier.isFile()) {
+            // Historique ouverture
+            HistoriqueCourrier historique = new HistoriqueCourrier();
+            historique.setCourrier(courrier);
+            historique.setUtilisateur(utilisateur);
+            historique.setEntite(courrier.getEntite());
+            historique.setStatut(StatutCourrier.EN_COURS);
+            historique.setCommentaire("Courrier ouvert et en cours de traitement");
+            historique.setDateAction(new Date());
+            historique.setAncienneEntite(courrier.getEntite());
+            historique.setNouvelleEntite(courrier.getEntite());
+            historiqueRepository.save(historique);
 
-        // Historique ouverture
-        HistoriqueCourrier historique = new HistoriqueCourrier();
-        historique.setCourrier(courrier);
-        historique.setUtilisateur(utilisateur);
-        historique.setEntite(courrier.getEntite());
-        historique.setStatut(StatutCourrier.EN_COURS);
-        historique.setCommentaire("Courrier ouvert et en cours de traitement");
-        historique.setDateAction(new Date());
-        historique.setAncienneEntite(courrier.getEntite());
-        historique.setNouvelleEntite(courrier.getEntite());
-        historiqueRepository.save(historique);
+            // Mettre le statut en cours
+            if(courrier.getStatut() == StatutCourrier.IMPUTER){
+                courrier.setStatut(StatutCourrier.EN_COURS);
+                courrierRepository.save(courrier);
+            }
 
-        // Mettre le statut en cours
-        if(courrier.getStatut() == StatutCourrier.IMPUTER){
-            courrier.setStatut(StatutCourrier.EN_COURS);
-            courrierRepository.save(courrier);
+            InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
+                    .header("Access-Control-Expose-Headers", "Content-Disposition")
+                    .contentLength(fichier.length())
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
         }
 
-        InputStreamResource resource = new InputStreamResource(new FileInputStream(fichier));
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fichier.getName() + "\"")
-                .header("Access-Control-Expose-Headers", "Content-Disposition")
-                .contentLength(fichier.length())
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(resource);
+        if (courrier.getFichier() != null && !courrier.getFichier().isBlank()) {
+            byte[] s3Bytes = uploadFileService.getFileBytesFromS3(courrier.getFichier());
+            if (s3Bytes != null && s3Bytes.length > 0) {
+                // Historique ouverture
+                HistoriqueCourrier historique = new HistoriqueCourrier();
+                historique.setCourrier(courrier);
+                historique.setUtilisateur(utilisateur);
+                historique.setEntite(courrier.getEntite());
+                historique.setStatut(StatutCourrier.EN_COURS);
+                historique.setCommentaire("Courrier ouvert et en cours de traitement");
+                historique.setDateAction(new Date());
+                historique.setAncienneEntite(courrier.getEntite());
+                historique.setNouvelleEntite(courrier.getEntite());
+                historiqueRepository.save(historique);
+
+                // Mettre le statut en cours
+                if(courrier.getStatut() == StatutCourrier.IMPUTER){
+                    courrier.setStatut(StatutCourrier.EN_COURS);
+                    courrierRepository.save(courrier);
+                }
+
+                InputStreamResource resource = new InputStreamResource(new ByteArrayInputStream(s3Bytes));
+                String filename = courrier.getFichier();
+                if (filename.contains("/")) {
+                    filename = filename.substring(filename.lastIndexOf("/") + 1);
+                }
+                return ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                        .header("Access-Control-Expose-Headers", "Content-Disposition")
+                        .contentLength(s3Bytes.length)
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .body(resource);
+            }
+        }
+
+        throw new CourrierValidationException("Fichier non trouvé pour ce courrier.");
     }
 
     /* ======================================================
@@ -318,12 +357,9 @@ public class CourrierService {
 
     private String sauvegarderFichier(MultipartFile fichier) throws IOException{
         if(fichier == null || fichier.isEmpty()) return null;
-        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
-        Files.createDirectories(uploadPath);
-        String nomFichier = System.currentTimeMillis() + "_" + Paths.get(fichier.getOriginalFilename()).getFileName();
-        Path destination = uploadPath.resolve(nomFichier);
-        fichier.transferTo(destination.toFile());
-        return destination.toString();
+        String folderName = "courriers";
+        String savedFileName = uploadFileService.uploadFile(fichier, folderName);
+        return folderName + "/" + savedFileName;
     }
 
     /**
@@ -340,37 +376,39 @@ public class CourrierService {
             throw new FileValidationException("Aucun fichier fourni");
         }
 
-        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+        String folderName = "courriers";
+        String savedFileName = uploadFileService.uploadFile(fichier, folderName);
+        return folderName + "/" + savedFileName;
+    }
 
-        // Création du répertoire sécurisé
-        Files.createDirectories(uploadPath);
-
-        // Génération d'un nom de fichier sécurisé
-        String originalFilename = fichier.getOriginalFilename();
-        String extension = "";
-        if (originalFilename != null && originalFilename.contains(".")) {
-            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+    /** Résout le chemin disque d'une pièce jointe (absolu, uploads/courriers, legacy images/). */
+    private File resolveCourrierFichier(String cheminStocke) {
+        if (cheminStocke == null || cheminStocke.isBlank()) {
+            return null;
         }
-
-        String nomFichier = System.currentTimeMillis() + "_" +
-                FileValidationUtil.normalizeFilename(originalFilename.substring(0, originalFilename.lastIndexOf("."))) + extension;
-
-        Path destination = uploadPath.resolve(nomFichier);
-
-        // Vérification que le chemin est bien dans le répertoire autorisé
-        if (!destination.startsWith(uploadPath)) {
-            throw new FileValidationException("Tentative de chemin de fichier non autorisée");
+        String trimmed = cheminStocke.trim();
+        File direct = new File(trimmed);
+        if (direct.isFile() && direct.exists()) {
+            return direct;
         }
-
-        // Sauvegarde du fichier
-        fichier.transferTo(destination.toFile());
-
-        // Vérification finale que le fichier existe et est accessible
-        if (!Files.exists(destination) || !Files.isReadable(destination)) {
-            throw new FileValidationException("Échec de la sauvegarde du fichier");
+        File sousUploads = Paths.get(uploadDir, trimmed).toAbsolutePath().normalize().toFile();
+        if (sousUploads.isFile() && sousUploads.exists()) {
+            return sousUploads;
         }
-
-        return destination.toString();
+        String fileName = Paths.get(trimmed).getFileName().toString();
+        File parNom = Paths.get(uploadDir).toAbsolutePath().normalize().resolve(fileName).toFile();
+        if (parNom.isFile() && parNom.exists()) {
+            return parNom;
+        }
+        File legacyImages = new File("images", fileName);
+        if (legacyImages.isFile() && legacyImages.exists()) {
+            return legacyImages;
+        }
+        File legacyImagesFull = new File("images/" + trimmed);
+        if (legacyImagesFull.isFile() && legacyImagesFull.exists()) {
+            return legacyImagesFull;
+        }
+        return null;
     }
 
     private String buildEmailBody(String expediteur, String departement, TypeEntite role, String message){
@@ -671,16 +709,18 @@ public class CourrierService {
             courrier.setEntite(cible);
             courrier.setStatut(StatutCourrier.ENVOYER);
             courrierRepository.save(courrier);
-            historiqueSimple(courrier, cible, StatutCourrier.ENVOYER,
-                    "Émis par la DCIRE (expédition KEÏTA) — remis au directeur ODC");
+            enregistrerHistoriqueCourrier(courrier, cible, null, StatutCourrier.ENVOYER,
+                    "Émis par la DCIRE (expédition KEÏTA) — remis au directeur ODC",
+                    dcire, cible);
             notifierDirecteursOdcNouveauCourrier(courrier);
         } else {
             // Fondation / RSE / DCI : pas de workflow validation ODC — courrier immédiatement « reçu » sur la structure.
             courrier.setEntite(cible);
             courrier.setStatut(StatutCourrier.ENVOYER);
             courrierRepository.save(courrier);
-            historiqueSimple(courrier, cible, StatutCourrier.ENVOYER,
-                    "Émis par la DCIRE — reçu sur la structure destinataire (réponse possible)");
+            enregistrerHistoriqueCourrier(courrier, cible, null, StatutCourrier.ENVOYER,
+                    "Émis par la DCIRE — reçu sur la structure destinataire (réponse possible)",
+                    dcire, cible);
             notifierDirecteursStructureReception(courrier, destinataireStructureDepuisDirection(cible));
         }
         return courrier;
@@ -903,16 +943,21 @@ public class CourrierService {
             courrier.setEntite(dcire);
             courrier.setStatut(StatutCourrier.TRANSMIS_DCIRE);
             courrierRepository.save(courrier);
-            historiqueSimple(courrier, dcire, StatutCourrier.TRANSMIS_DCIRE,
-                    "Réponse " + nomAuteur + " — transmission à la DCIRE pour décharge / scan avant envoi");
+            enregistrerHistoriqueCourrier(courrier, dcire, auteur, StatutCourrier.TRANSMIS_DCIRE,
+                    "Réponse " + nomAuteur + " — transmission à la DCIRE pour décharge / scan avant envoi",
+                    courrier.getDirectionInitial(), dcire);
             notifierDirecteursDcireDechargeReponse(courrier, dcire);
             return courrier;
         }
         courrier.setStatut(StatutCourrier.REPONDU);
-        resolveDcireDirectionOptional().ifPresent(courrier::setEntite);
+        Entite dcireHub = resolveDcireDirectionOptional().orElse(null);
+        if (dcireHub != null) {
+            courrier.setEntite(dcireHub);
+        }
         courrierRepository.save(courrier);
-        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.REPONDU,
-                "Réponse " + nomAuteur + " — retour direct à la DCIRE (courrier interne division)");
+        enregistrerHistoriqueCourrier(courrier, dcireHub, auteur, StatutCourrier.REPONDU,
+                "Réponse " + nomAuteur + " — retour à la DCIRE",
+                courrier.getDirectionInitial(), dcireHub);
         notifierDirecteursDcireHub(courrier, courrier.getEntite());
         return courrier;
     }
@@ -1029,6 +1074,10 @@ public class CourrierService {
         if (courrier.getStatut() != StatutCourrier.ENVOYER && courrier.getStatut() != StatutCourrier.IMPUTER && courrier.getStatut() != StatutCourrier.EN_COURS) {
             throw new CourrierValidationException("Ce courrier ne peut pas être délégué.");
         }
+        if (courrier.getExternePrecision() != null
+                && courrier.getExternePrecision().trim().startsWith("Délégué par e-mail")) {
+            throw new CourrierValidationException("Ce courrier a déjà été délégué par e-mail.");
+        }
         
         courrier.setStatut(StatutCourrier.IMPUTER);
         if (note != null && !note.isBlank()) {
@@ -1038,14 +1087,26 @@ public class CourrierService {
         courrier.setExternePrecision("Délégué par e-mail à: " + email.trim());
         courrierRepository.save(courrier);
         
-        historiqueSimple(courrier, courrier.getEntite(), StatutCourrier.IMPUTER,
-                "Courrier délégué par e-mail à : " + email.trim() + (note != null && !note.isBlank() ? " — Note : " + note.trim() : ""));
+        Entite structure = u.getEntite() != null && u.getEntite().getId() != null
+                ? entiteRepository.findById(u.getEntite().getId()).orElse(u.getEntite())
+                : courrier.getEntite();
+        enregistrerHistoriqueCourrier(courrier, structure, u, StatutCourrier.IMPUTER,
+                "Courrier délégué par e-mail à : " + email.trim()
+                        + (note != null && !note.isBlank() ? " — Note : " + note.trim() : ""),
+                structure, null);
                 
         try {
+            Entite direction = u.getEntite() != null && u.getEntite().getId() != null
+                    ? entiteRepository.findById(u.getEntite().getId()).orElse(u.getEntite())
+                    : null;
+            DivisionMarque marque = marquePourDirection(direction);
+            String structureNom = direction != null && direction.getNom() != null
+                    ? direction.getNom().trim()
+                    : "votre direction";
             String sujet = "Délégation de courrier: " + courrier.getObjet();
             StringBuilder corps = new StringBuilder();
             corps.append("Bonjour,<br/><br/>");
-            corps.append("Le directeur de la structure <strong>").append(u.getPrenom() != null ? u.getPrenom() : "Direction").append("</strong> vous a délégué le courrier suivant :<br/><br/>");
+            corps.append("Le directeur de <strong>").append(structureNom).append("</strong> vous a délégué le courrier suivant :<br/><br/>");
             corps.append("<ul>");
             corps.append("<li><strong>Numéro :</strong> ").append(courrier.getNumero()).append("</li>");
             corps.append("<li><strong>Objet :</strong> ").append(courrier.getObjet()).append("</li>");
@@ -1055,14 +1116,32 @@ public class CourrierService {
                 corps.append("<br/><strong>Note du directeur :</strong><br/>");
                 corps.append("<p style='white-space: pre-wrap;'>").append(note.trim()).append("</p>");
             }
-            corps.append("<br/><br/>Cordialement,<br/>L'application ODC Activité.");
+            corps.append("<br/><br/>").append(marque.signatureHtml());
+            corps.append("<br/><span style='font-size:0.85em;color:#666;'>").append(marque.piedPage()).append("</span>");
             
-            if (courrier.getFichier() != null && !courrier.getFichier().isBlank()) {
-                java.io.File file = new java.io.File("images/" + courrier.getFichier());
-                if (file.exists()) {
-                    emailService.sendEmailWithAttachments(email.trim(), sujet, corps.toString(), java.util.List.of(file), u.getPrenom(), u.getEmail());
-                } else {
-                    emailService.sendSimpleEmail(email.trim(), sujet, corps.toString(), u.getPrenom(), u.getEmail());
+            java.io.File file = resolveCourrierFichier(courrier.getFichier());
+            boolean isTemp = false;
+            if (file == null && courrier.getFichier() != null && !courrier.getFichier().isBlank()) {
+                byte[] s3Bytes = uploadFileService.getFileBytesFromS3(courrier.getFichier());
+                if (s3Bytes != null && s3Bytes.length > 0) {
+                    String filename = courrier.getFichier();
+                    if (filename.contains("/")) {
+                        filename = filename.substring(filename.lastIndexOf("/") + 1);
+                    }
+                    java.io.File tempFile = java.io.File.createTempFile("s3-attach-", filename);
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
+                        fos.write(s3Bytes);
+                    }
+                    file = tempFile;
+                    isTemp = true;
+                }
+            }
+            if (file != null) {
+                emailService.sendEmailWithAttachments(email.trim(), sujet, corps.toString(), java.util.List.of(file), u.getPrenom(), u.getEmail());
+                if (isTemp) {
+                    try {
+                        file.delete();
+                    } catch (Exception ex) {}
                 }
             } else {
                 emailService.sendSimpleEmail(email.trim(), sujet, corps.toString(), u.getPrenom(), u.getEmail());
@@ -1152,14 +1231,28 @@ public class CourrierService {
     }
 
     private void historiqueSimple(Courrier courrier, Entite entite, StatutCourrier statut, String commentaire) {
+        enregistrerHistoriqueCourrier(courrier, entite, null, statut, commentaire,
+                courrier.getEntite(), entite);
+    }
+
+    private void enregistrerHistoriqueCourrier(
+            Courrier courrier,
+            Entite entite,
+            Utilisateur utilisateur,
+            StatutCourrier statut,
+            String commentaire,
+            Entite ancienneEntite,
+            Entite nouvelleEntite
+    ) {
         HistoriqueCourrier h = new HistoriqueCourrier();
         h.setCourrier(courrier);
         h.setEntite(entite);
+        h.setUtilisateur(utilisateur);
         h.setStatut(statut);
         h.setCommentaire(commentaire);
         h.setDateAction(new Date());
-        h.setAncienneEntite(courrier.getEntite());
-        h.setNouvelleEntite(entite);
+        h.setAncienneEntite(ancienneEntite);
+        h.setNouvelleEntite(nouvelleEntite);
         historiqueRepository.save(h);
     }
 
@@ -1399,8 +1492,19 @@ public class CourrierService {
         m.put("enAttenteValidation", listerPourValidationDirecteurStructure(u));
         m.put("recus", listerRecusOperationnelsMaStructure(u));
         m.put("emis", listerEmisPourMaStructure(u));
+        m.put("archives", listerArchivesPourMaStructure(u));
         m.put("tout", listerToutPourMaStructure(u));
         return m;
+    }
+
+    public List<Courrier> listerArchivesPourMaStructure(Utilisateur principal) {
+        Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
+        if (u.getEntite() == null || u.getEntite().getId() == null) {
+            return List.of();
+        }
+        return courrierRepository.findTousVisiblesPourDirection(u.getEntite().getId()).stream()
+                .filter(c -> c.getStatut() == StatutCourrier.ARCHIVER)
+                .toList();
     }
 
     public List<Entite> listerDirectionsCiblesInternesPourStructure(Utilisateur principal) {
@@ -1439,11 +1543,9 @@ public class CourrierService {
      * Courrier sortant externe depuis une direction de la division (hors ODC) : dépôt sur le hub, statut {@link StatutCourrier#TRANSMIS_DCIRE}.
      */
     public Courrier enregistrerCourrierExterneDepuisMaStructure(CourrierDTO dto, Utilisateur principal) throws IOException {
-        throw new CourrierValidationException(
-                "Seule la DCIRE émet des courriers. Les structures reçoivent et répondent uniquement.");
+        return enregistrerCourrierExterneDepuisMaStructureLegacy(dto, principal);
     }
 
-    @SuppressWarnings("unused")
     private Courrier enregistrerCourrierExterneDepuisMaStructureLegacy(CourrierDTO dto, Utilisateur principal)
             throws IOException {
         Utilisateur u = utilisateurRepository.findById(principal.getId()).orElse(principal);
@@ -1500,11 +1602,12 @@ public class CourrierService {
         HistoriqueCourrier historique = new HistoriqueCourrier();
         historique.setCourrier(courrier);
         historique.setEntite(dcire);
-        historique.setUtilisateur(null);
+        historique.setUtilisateur(u);
         historique.setStatut(StatutCourrier.TRANSMIS_DCIRE);
-        historique.setCommentaire("Émission externe depuis une direction — dépôt sur le hub");
+        historique.setCommentaire(
+                "Courrier transmis à la DCIRE — en attente d'enregistrement et de suivi");
         historique.setDateAction(new Date());
-        historique.setAncienneEntite(null);
+        historique.setAncienneEntite(origine);
         historique.setNouvelleEntite(dcire);
         historiqueRepository.save(historique);
 
@@ -1703,7 +1806,28 @@ public class CourrierService {
                         StatutCourrier.ENVOYER,
                         StatutCourrier.IMPUTER,
                         StatutCourrier.EN_COURS,
-                        StatutCourrier.REPONDU));
+                        StatutCourrier.REPONDU))
+                .stream()
+                .filter(c -> !estEmissionEmailSortanteDepuisDirection(c, u.getEntite().getId()))
+                .toList();
+    }
+
+    /** Courrier émis par email direct depuis la direction (sortant) — ne doit pas apparaître dans « Reçus ». */
+    private boolean estEmissionEmailSortanteDepuisDirection(Courrier c, Long directionId) {
+        if (directionId == null || c.getStructureOrigine() == null || c.getStructureOrigine().getId() == null) {
+            return false;
+        }
+        if (!Objects.equals(c.getStructureOrigine().getId(), directionId)) {
+            return false;
+        }
+        DestinataireCourrierOdc dest = c.getDestinataireOdc() != null
+                ? c.getDestinataireOdc()
+                : DestinataireCourrierOdc.EXTERNE;
+        if (dest != DestinataireCourrierOdc.EXTERNE) {
+            return false;
+        }
+        String precision = c.getExternePrecision();
+        return precision != null && precision.contains("@");
     }
 
     public Courrier validerReceptionParDirecteurStructure(Long courrierId, Utilisateur principal) {
@@ -2392,8 +2516,11 @@ public class CourrierService {
         }
     }
 
+    /**
+     * Émission email direct depuis une direction de la division (ODC, Fondation, RSE, DCI).
+     */
     @Transactional
-    public Courrier emettreCourrierOdcParEmail(
+    public Courrier emettreCourrierDivisionParEmail(
             String numero,
             String expediteur,
             String objet,
@@ -2413,7 +2540,11 @@ public class CourrierService {
         }
 
         Entite direction = entiteRepository.findById(directionId)
-                .orElseThrow(() -> new CourrierValidationException("Direction non trouvée"));
+                .orElseThrow(() -> new CourrierValidationException("Direction de votre division introuvable."));
+        if (direction.getType() != TypeEntite.DIRECTION) {
+            throw new CourrierValidationException("L'identifiant doit correspondre à une direction.");
+        }
+        assertUtilisateurPeutEmettrePourDirection(auteur, direction);
 
         String cheminFichier = null;
         if (fichier != null && !fichier.isEmpty()) {
@@ -2425,68 +2556,199 @@ public class CourrierService {
         }
 
         Courrier courrier = new Courrier();
-        courrier.setNumero(numero != null && !numero.isBlank() ? numero : "ODC-" + System.currentTimeMillis());
+        courrier.setNumero(numero != null && !numero.isBlank() ? numero : prefixNumeroDirection(direction) + "-" + System.currentTimeMillis());
         courrier.setObjet(objet);
         courrier.setExpediteur(expediteur);
         courrier.setEntite(direction);
         courrier.setDirectionInitial(direction);
         courrier.setStructureOrigine(direction);
         courrier.setFichier(cheminFichier);
-        courrier.setStatut(StatutCourrier.REPONDU);
+        courrier.setStatut(StatutCourrier.ENVOYER);
         courrier.setDateReception(new Date());
         courrier.setDestinataireOdc(DestinataireCourrierOdc.EXTERNE);
-        courrier.setExternePrecision(emailDestinataire);
+        courrier.setExternePrecision(emailDestinataire.trim());
         courrierRepository.save(courrier);
 
         HistoriqueCourrier historique = new HistoriqueCourrier();
         historique.setCourrier(courrier);
         historique.setEntite(direction);
         historique.setUtilisateur(auteur);
-        historique.setStatut(StatutCourrier.REPONDU);
-        historique.setCommentaire("Courrier émis directement par email à : " + emailDestinataire);
+        historique.setStatut(StatutCourrier.ENVOYER);
+        historique.setCommentaire("Courrier émis par email direct vers " + emailDestinataire.trim());
         historique.setDateAction(new Date());
-        historique.setAncienneEntite(null);
-        historique.setNouvelleEntite(direction);
+        historique.setAncienneEntite(direction);
+        historique.setNouvelleEntite(null);
         historiqueRepository.save(historique);
 
         List<java.io.File> filesToAttach = new java.util.ArrayList<>();
-        if (cheminFichier != null) {
-            filesToAttach.add(new java.io.File(cheminFichier));
+        java.io.File tempFileToDelete = null;
+        File resolved = resolveCourrierFichier(cheminFichier);
+        if (resolved != null) {
+            filesToAttach.add(resolved);
+        } else if (cheminFichier != null && !cheminFichier.isBlank()) {
+            byte[] s3Bytes = uploadFileService.getFileBytesFromS3(cheminFichier);
+            if (s3Bytes != null && s3Bytes.length > 0) {
+                String filename = cheminFichier;
+                if (filename.contains("/")) {
+                    filename = filename.substring(filename.lastIndexOf("/") + 1);
+                }
+                java.io.File tempFile = java.io.File.createTempFile("s3-attach-", filename);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
+                    fos.write(s3Bytes);
+                }
+                filesToAttach.add(tempFile);
+                tempFileToDelete = tempFile;
+            }
         }
 
+        DivisionMarque marque = marquePourDirection(direction);
         String emailBody = "<!DOCTYPE html><html><body>"
                 + "<div style='font-family: Arial, sans-serif; border: 2px solid #ff7900; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto;'>"
                 + "<div style='background-color: #ff7900; color: white; padding: 15px; font-size: 22px; font-weight: bold; text-align: center; border-top-left-radius: 6px; border-top-right-radius: 6px;'>"
-                + "Orange Digital Center"
+                + marque.enTete()
                 + "</div>"
                 + "<div style='padding: 20px; background-color: #ffffff; color: #2c3e50; line-height: 1.6;'>"
                 + "<h3 style='color: #2c3e50; border-bottom: 1px solid #dee2e6; padding-bottom: 10px;'>Envoi de courrier</h3>"
                 + "<p>Bonjour,</p>"
-                + "<p>Nous vous transmettons un courrier émis par <b>" + expediteur + "</b> de la direction <b>" + direction.getNom() + "</b>.</p>"
+                + "<p>Nous vous transmettons un courrier émis par <b>" + expediteur + "</b>"
+                + (direction.getNom() != null ? " — <b>" + direction.getNom() + "</b>" : "")
+                + ".</p>"
                 + "<div style='background-color: #f8f9fa; border-left: 4px solid #ff7900; padding: 15px; margin: 20px 0; border-radius: 4px;'>"
                 + "<p style='margin: 0; font-weight: bold; color: #2c3e50; margin-bottom: 10px;'>Objet :</p>"
                 + "<p style='margin: 0;'>" + objet + "</p>"
                 + "</div>"
                 + "<p>Veuillez trouver ci-joint le document correspondant.</p>"
-                + "<p>Cordialement,<br>L'équipe Orange Digital Center</p>"
+                + "<p>" + marque.signatureHtml() + "</p>"
                 + "</div>"
                 + "<hr style='border: none; border-top: 1px solid #dee2e6; margin: 20px 0;'>"
                 + "<p style='font-size: 0.8em; color: #888888; text-align: center; margin: 0;'>"
-                + "Ceci est un envoi automatique depuis la plateforme Orange Digital Center. Merci de ne pas y répondre directement."
+                + marque.piedPage()
                 + "</p>"
                 + "</div></body></html>";
 
-        String replyTo = auteur != null && auteur.getEmail() != null && auteur.getEmail().contains("@")
-                ? auteur.getEmail().trim()
-                : null;
-        emailService.sendEmailWithAttachments(
-                emailDestinataire.trim(),
-                objet,
-                emailBody,
-                filesToAttach,
-                expediteur.trim(),
-                replyTo);
+        String auteurLibelle = buildExpediteurLibelleAuteur(auteur, direction);
+        String displayName = EmailService.resolveDisplayName(expediteur, auteurLibelle);
+        String replyTo = EmailService.resolveReplyTo(expediteur, auteur != null ? auteur.getEmail() : null);
+        
+        try {
+            emailService.sendEmailWithAttachments(
+                    emailDestinataire.trim(),
+                    objet,
+                    emailBody,
+                    filesToAttach,
+                    displayName,
+                    replyTo);
+        } finally {
+            if (tempFileToDelete != null) {
+                try {
+                    tempFileToDelete.delete();
+                } catch (Exception ex) {}
+            }
+        }
 
         return courrier;
+    }
+
+    /** Alias historique (directeur ODC). */
+    @Transactional
+    public Courrier emettreCourrierOdcParEmail(
+            String numero,
+            String expediteur,
+            String objet,
+            String emailDestinataire,
+            Long directionId,
+            MultipartFile fichier,
+            Utilisateur auteur
+    ) throws IOException {
+        return emettreCourrierDivisionParEmail(
+                numero, expediteur, objet, emailDestinataire, directionId, fichier, auteur);
+    }
+
+    private String prefixNumeroDirection(Entite direction) {
+        if (direction == null || direction.getNom() == null) {
+            return "DIV";
+        }
+        String n = normalizeNomEntite(direction.getNom());
+        if (n.contains("FONDATION")) {
+            return "FONDATION";
+        }
+        if (n.contains("RSE")) {
+            return "RSE";
+        }
+        if (n.contains("DCI") && !n.contains("DCIRE")) {
+            return "DCI";
+        }
+        if (estDirectionOdc(direction)) {
+            return "ODC";
+        }
+        return "DIV";
+    }
+
+    private void assertUtilisateurPeutEmettrePourDirection(Utilisateur auteur, Entite direction) {
+        if (direction == null || direction.getId() == null) {
+            throw new CourrierValidationException("Direction invalide.");
+        }
+        if (auteur == null) {
+            return;
+        }
+        if (auteur.getRole() != null) {
+            String role = auteur.getRole().getNom() != null
+                    ? auteur.getRole().getNom().trim().toUpperCase(java.util.Locale.ROOT)
+                    : "";
+            if ("SUPERADMIN".equals(role) || "ADMIN".equals(role)) {
+                return;
+            }
+        }
+        if (auteur.getEntite() != null && Objects.equals(auteur.getEntite().getId(), direction.getId())) {
+            return;
+        }
+        throw new CourrierValidationException(
+                "Vous ne pouvez émettre des courriers que pour votre propre direction.");
+    }
+
+    private String buildExpediteurLibelleAuteur(Utilisateur auteur, Entite direction) {
+        if (auteur != null) {
+            String prenom = auteur.getPrenom() != null ? auteur.getPrenom().trim() : "";
+            String nom = auteur.getNom() != null ? auteur.getNom().trim() : "";
+            String full = (prenom + " " + nom).trim();
+            if (!full.isBlank()) {
+                return full;
+            }
+        }
+        return direction != null && direction.getNom() != null ? direction.getNom() : marquePourDirection(direction).enTete();
+    }
+
+    private record DivisionMarque(String enTete, String signatureHtml, String piedPage) {}
+
+    private DivisionMarque marquePourDirection(Entite direction) {
+        if (direction == null || direction.getNom() == null) {
+            return new DivisionMarque(
+                    "Plateforme courriers",
+                    "Cordialement.",
+                    "Message automatique — merci de ne pas répondre à cet email.");
+        }
+        String n = normalizeNomEntite(direction.getNom());
+        if (n.contains("FONDATION")) {
+            return new DivisionMarque(
+                    "Fondation Orange",
+                    "Cordialement,<br/>Direction Fondation",
+                    "Envoi automatique — Direction Fondation.");
+        }
+        if (n.contains("RSE")) {
+            return new DivisionMarque(
+                    "RSE Orange",
+                    "Cordialement,<br/>Direction RSE",
+                    "Envoi automatique — Direction RSE.");
+        }
+        if (n.contains("DCI") && !n.contains("DCIRE")) {
+            return new DivisionMarque(
+                    "DCI Orange",
+                    "Cordialement,<br/>Direction DCI",
+                    "Envoi automatique — Direction DCI.");
+        }
+        return new DivisionMarque(
+                "Orange Digital Center",
+                "Cordialement,<br/>Orange Digital Center",
+                "Envoi automatique — Orange Digital Center.");
     }
 }

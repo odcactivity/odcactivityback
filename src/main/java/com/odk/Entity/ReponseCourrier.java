@@ -1,5 +1,6 @@
 package com.odk.Entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.odk.Enum.StatutCourrier;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -21,6 +22,7 @@ public class ReponseCourrier {
 
     @ManyToOne
     @JoinColumn(name = "courrier_id")
+    @JsonIgnore
     private Courrier courrier;
 
     @Column(nullable = false)

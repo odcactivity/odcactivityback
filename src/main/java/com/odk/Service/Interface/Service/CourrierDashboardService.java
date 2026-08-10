@@ -70,7 +70,7 @@ public class CourrierDashboardService {
 
     public CourrierDashboardTotalsDTO totaux(Long structureId, Utilisateur principal) {
         DashboardScope scope = resolveScope(structureId, principal);
-        List<Courrier> list = loadCourriersPourScope(scope, principal);
+        List<Courrier> list = new ArrayList<>(loadCourriersPourScope(scope, principal));
         Long effectiveId = resolveEffectiveStructureId(structureId, principal);
         applyCourrierDashboardStructureFilterDcire(list, effectiveId, structureId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);
@@ -109,7 +109,7 @@ public class CourrierDashboardService {
     public CourrierDashboardSerieDTO serie(String periode, Long structureId, Utilisateur principal) {
         String p = periode == null ? "semaine" : periode.trim().toLowerCase(Locale.ROOT);
         DashboardScope scope = resolveScope(structureId, principal);
-        List<Courrier> list = loadCourriersPourScope(scope, principal);
+        List<Courrier> list = new ArrayList<>(loadCourriersPourScope(scope, principal));
         Long effectiveId = resolveEffectiveStructureId(structureId, principal);
         applyCourrierDashboardStructureFilterDcire(list, effectiveId, structureId, principal);
         Map<Long, List<HistoriqueCourrier>> histByCourrierId = loadHistoriques(list);

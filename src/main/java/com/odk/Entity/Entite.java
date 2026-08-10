@@ -51,7 +51,7 @@ public class Entite {
     private Entite parent;
 
     // Sub‑entities (services or units) under this entity
-    @JsonIgnoreProperties({"parent", "sousEntite"})
+    @JsonIgnoreProperties({"sousEntite", "parent", "activite", "responsable", "typeActivitesIds"})
     @OneToMany(mappedBy = "parent")
     private List<Entite> sousEntite;
 

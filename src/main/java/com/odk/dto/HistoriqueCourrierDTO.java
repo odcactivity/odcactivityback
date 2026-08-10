@@ -14,4 +14,10 @@ public class HistoriqueCourrierDTO {
     private Date dateAction;
     private String utilisateur;
     private String entite;
+    /** Expéditeur métier du courrier (ex. KEÏTA DCIRE). */
+    private String expediteurCourrier;
+    private String ancienneEntiteNom;
+    private String nouvelleEntiteNom;
+    private String entiteDetentionNom;
+    private String structureOrigineNom;
 }

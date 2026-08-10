@@ -126,8 +126,12 @@ public class ReponseCourrierService {
             
             List<java.io.File> filesToAttach = new java.util.ArrayList<>();
             for (String chemin : fichiersJoints) {
-                if (chemin != null && !chemin.isBlank()) {
-                    filesToAttach.add(new java.io.File(chemin));
+                if (chemin == null || chemin.isBlank()) {
+                    continue;
+                }
+                java.io.File f = new java.io.File(chemin);
+                if (f.isFile() && f.exists()) {
+                    filesToAttach.add(f);
                 }
             }
             
@@ -153,13 +157,16 @@ public class ReponseCourrierService {
                     + "</p>"
                     + "</div></body></html>";
             
+            String auteurLibelle = libelleUtilisateur(auteur);
+            String displayName = EmailService.resolveDisplayName(dto.getEmail(), auteurLibelle);
+            String replyTo = EmailService.resolveReplyTo(dto.getEmail(), auteur != null ? auteur.getEmail() : null);
             emailService.sendEmailWithAttachments(
                     dto.getEmailDestinataire().trim(),
                     dto.getObjet(),
                     emailBody,
                     filesToAttach,
-                    dto.getEmail() != null ? dto.getEmail().trim() : null,
-                    dto.getEmail());
+                    displayName,
+                    replyTo);
             
             com.odk.Entity.HistoriqueCourrier historiqueHC = new com.odk.Entity.HistoriqueCourrier();
             historiqueHC.setCourrier(courrier);
@@ -182,6 +189,16 @@ public class ReponseCourrierService {
             log.info("Réponse enregistrée pour le courrier {} par {}", courrier.getId(), dto.getEmail());
         }
         return savedReponse;
+    }
+
+    private String libelleUtilisateur(Utilisateur auteur) {
+        if (auteur == null) {
+            return "Orange Digital Center";
+        }
+        String prenom = auteur.getPrenom() != null ? auteur.getPrenom().trim() : "";
+        String nom = auteur.getNom() != null ? auteur.getNom().trim() : "";
+        String full = (prenom + " " + nom).trim();
+        return full.isBlank() ? "Orange Digital Center" : full;
     }
 
     private void verifierResponsablePeutRepondreCourrierDelegue(Courrier courrier, Utilisateur auteur) {

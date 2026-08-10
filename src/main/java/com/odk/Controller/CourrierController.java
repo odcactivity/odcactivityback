@@ -349,8 +349,32 @@ public class CourrierController {
             @RequestParam(required = false) MultipartFile fichier,
             @AuthenticationPrincipal Utilisateur auteur
     ) throws IOException {
-        Courrier courrier = courrierService.emettreCourrierOdcParEmail(
+        Courrier courrier = courrierService.emettreCourrierDivisionParEmail(
                 numero, expediteur, objet, emailDestinataire, directionId, fichier, auteur
+        );
+        return ResponseEntity.ok(courrier);
+    }
+
+    @PostMapping("/structure-directeur/emission-email")
+    @PreAuthorize("hasAnyRole('DIRECTEUR_FONDATION','DIRECTEUR_RSE','DIRECTEUR_DCI','SUPERADMIN','ADMIN')")
+    public ResponseEntity<Courrier> emettreCourrierStructureParEmail(
+            @RequestParam(required = false) String numero,
+            @RequestParam String expediteur,
+            @RequestParam String objet,
+            @RequestParam String emailDestinataire,
+            @RequestParam(required = false) Long directionId,
+            @RequestParam(required = false) MultipartFile fichier,
+            @AuthenticationPrincipal Utilisateur auteur
+    ) throws IOException {
+        Long dirId = directionId;
+        if (dirId == null && auteur != null && auteur.getEntite() != null) {
+            dirId = auteur.getEntite().getId();
+        }
+        if (dirId == null) {
+            throw new CourrierValidationException("Direction de votre division introuvable.");
+        }
+        Courrier courrier = courrierService.emettreCourrierDivisionParEmail(
+                numero, expediteur, objet, emailDestinataire, dirId, fichier, auteur
         );
         return ResponseEntity.ok(courrier);
     }
@@ -606,7 +630,7 @@ public class CourrierController {
         dto.setAttachments(attachments);
 
         ReponseCourrier reponse = reponseCourrierService.repondreCourrier(dto, utilisateur);
-        return ResponseEntity.ok(reponse);
+            return ResponseEntity.ok(reponse);
     }
 
     @GetMapping("/{courrierId}/reponses")
