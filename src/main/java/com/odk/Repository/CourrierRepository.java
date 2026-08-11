@@ -38,12 +38,18 @@ public interface CourrierRepository extends JpaRepository<Courrier,Long> {
 
     List<Courrier> findByEntiteIdAndStatutIn(Long entiteId, Collection<StatutCourrier> statuts);
 
-    @Query("SELECT c FROM Courrier c WHERE c.statut IN :statuts AND (" +
-            "(c.structureOrigine IS NOT NULL AND c.structureOrigine.id = :dirId) OR " +
-            "(c.directionInitial IS NOT NULL AND c.directionInitial.id = :dirId) OR " +
-            "(c.entite IS NOT NULL AND c.entite.id = :dirId) OR " +
-            "(c.entite IS NOT NULL AND c.entite.parent IS NOT NULL AND c.entite.parent.id = :dirId)" +
-            ") ORDER BY c.dateReception DESC")
+    @Query("SELECT DISTINCT c FROM Courrier c "
+            + "LEFT JOIN FETCH c.entite "
+            + "LEFT JOIN FETCH c.structureOrigine "
+            + "LEFT JOIN FETCH c.directionInitial "
+            + "LEFT JOIN FETCH c.cibleInterneDirection "
+            + "WHERE c.statut IN :statuts AND ("
+            + "(c.structureOrigine IS NOT NULL AND c.structureOrigine.id = :dirId) OR "
+            + "(c.directionInitial IS NOT NULL AND c.directionInitial.id = :dirId) OR "
+            + "(c.cibleInterneDirection IS NOT NULL AND c.cibleInterneDirection.id = :dirId) OR "
+            + "(c.entite IS NOT NULL AND c.entite.id = :dirId) OR "
+            + "(c.entite IS NOT NULL AND c.entite.parent IS NOT NULL AND c.entite.parent.id = :dirId)"
+            + ") ORDER BY c.dateReception DESC")
     List<Courrier> findVisiblePourDirectionOdc(@Param("dirId") Long dirId, @Param("statuts") Collection<StatutCourrier> statuts);
 
     @Query("SELECT c FROM Courrier c WHERE c.statut IN :statuts AND c.structureOrigine IS NOT NULL AND c.structureOrigine.id = :dirId " +

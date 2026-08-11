@@ -526,6 +526,7 @@ public class CourrierService {
         return false;
     }
 
+    @Transactional(readOnly = true)
     public List<Courrier> listerPourOdc(Long directionId, String vue) {
         Entite dir = entiteRepository.findById(directionId)
                 .orElseThrow(() -> new CourrierValidationException("Direction ODC introuvable"));
@@ -545,7 +546,10 @@ public class CourrierService {
         } else if ("ARCHIVES".equalsIgnoreCase(vue)) {
             statuts = List.of(StatutCourrier.ARCHIVER);
         } else if ("REPONDUS".equalsIgnoreCase(vue)) {
-            statuts = List.of(StatutCourrier.REPONDU);
+            statuts = List.of(
+                    StatutCourrier.REPONDU,
+                    StatutCourrier.TRANSMIS_DCIRE,
+                    StatutCourrier.ARCHIVER);
         } else {
             statuts = List.of(
                     StatutCourrier.ENVOYER,
@@ -583,7 +587,10 @@ public class CourrierService {
                 return true;
             }
         }
-        if (so == null && c.getDirectionInitial() != null && Objects.equals(c.getDirectionInitial().getId(), pilierOdcId)) {
+        if (c.getDirectionInitial() != null && Objects.equals(c.getDirectionInitial().getId(), pilierOdcId)) {
+            return true;
+        }
+        if (c.getCibleInterneDirection() != null && Objects.equals(c.getCibleInterneDirection().getId(), pilierOdcId)) {
             return true;
         }
         if (so != null && estStructureDivisionHorsOdcDcire(so)) {
